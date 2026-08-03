@@ -1,0 +1,9 @@
+{
+  "id": "storm-runoff",
+  "name": "Storm Runoff Calculator",
+  "version": "1.0.0",
+  "description": "Rational Method peak stormwater flow (Q = C·i·A). Adds a Runoff section to project boards; can save the result to a number field.",
+  "entry": "index.js",
+  "contributes": { "boardSection": { "title": "Runoff" } },
+  "permissions": ["writeField"]
+}

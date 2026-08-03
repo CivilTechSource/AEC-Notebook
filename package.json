@@ -1,0 +1,69 @@
+{
+  "name": "aec-notebook",
+  "productName": "AEC Notebook",
+  "version": "1.0.0",
+  "description": "A desktop notebook for AEC project folders: custom per-folder schemas, markdown notes, and sandboxed plugins.",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/**/*.test.js\"",
+    "vendor": "node scripts/vendor.js",
+    "build": "electron-builder",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "electron",
+    "notes",
+    "markdown",
+    "aec",
+    "project-management"
+  ],
+  "author": "Civil Teach Source Group Limited",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/aec-notebook.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OWNER/aec-notebook/issues"
+  },
+  "homepage": "https://github.com/OWNER/aec-notebook#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.civilteachsource.aec-notebook",
+    "productName": "AEC Notebook",
+    "icon": "icon.png",
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "plugins/**/*"
+    ],
+    "asarUnpack": [
+      "plugins/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office"
+    }
+  },
+  "dependencies": {
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
+    "minisearch": "^7.2.0"
+  }
+}

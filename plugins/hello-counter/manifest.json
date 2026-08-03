@@ -1,0 +1,7 @@
+{
+  "id": "hello-counter",
+  "name": "Hello Counter",
+  "version": "1.0.0",
+  "description": "A tiny sample plugin: a click counter, to demonstrate the sandboxed plugin system.",
+  "entry": "index.js"
+}

@@ -1,0 +1,304 @@
+// app.js — bootstrap: ribbon pages, grouped project panel, tab behaviours, shortcuts, resizers.
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const basename = (p) => p.split(/[\\/]/).filter(Boolean).pop() || p;
+  let searchTerm = '';
+
+  function setStatus(msg) { const el = $('#statusMsg'); if (el) el.textContent = msg; }
+  window.setStatus = setStatus;
+
+  // Custom properties repaint on their own; the old display:none/reflow hack just caused a
+  // full-page flash (and forced every iframe to re-layout) on each toggle.
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+  }
+  function toggleTheme() {
+    const next = (window.Store.state.settings.theme === 'light') ? 'dark' : 'light';
+    window.Store.state.settings.theme = next;
+    applyTheme(next);
+    window.Store.saveSettings();
+    window.PluginBridge?.broadcastTheme?.();   // keep plugin frames in sync with the theme
+  }
+
+  // ---------- ribbon / pages ----------
+  const PAGE_RENDER = {
+    schema: () => window.SchemaEditor.render($('#page-schema')),
+    plugins: () => window.PluginsView.render($('#page-plugins')),
+    storage: () => window.StorageView.render($('#page-storage')),
+  };
+  function showPage(page) {
+    if (page === 'settings') page = 'storage';
+    document.querySelectorAll('.ribbon-btn').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
+    document.querySelectorAll('.page').forEach((p) => { p.hidden = p.id !== `page-${page}`; });
+    if (PAGE_RENDER[page]) PAGE_RENDER[page]();
+  }
+
+  // ---------- project panel ----------
+  function projectDot(p) {
+    if (!p.hasMetadata) return 'var(--muted-2)';     // not set up
+    if (p.complete === false) return 'var(--amber)'; // has data but missing required
+    return 'var(--green)';                           // complete
+  }
+  function projectMeta(p) {
+    if (!p.hasMetadata) return 'not set up';
+    if (p.complete === false) return 'incomplete';
+    return 'configured';
+  }
+
+  function renderProjectPanel() {
+    const { groups, activeProjectPath } = window.Store.state;
+    const host = $('#projectGroups');
+    const empty = $('#projectEmpty');
+    host.innerHTML = '';
+    empty.style.display = groups.length ? 'none' : 'block';
+    const term = searchTerm.trim().toLowerCase();
+
+    groups.forEach((g) => {
+      const matches = g.projects.filter((p) => !term || p.name.toLowerCase().includes(term));
+      if (term && matches.length === 0) return;
+      const group = document.createElement('div');
+      group.className = 'path-group' + (g.collapsed ? ' collapsed' : '');
+
+      const header = document.createElement('button');
+      header.className = 'path-header';
+      header.title = g.path;
+      header.innerHTML = `<span class="chev">${window.ICON.chevDown}</span><span class="folder-ico">${window.ICON.folder}</span><span class="path-name">${escapeHtml(basename(g.path))}</span><span class="path-count">${matches.length}</span><span class="path-table" title="Open table view">⊞</span>`;
+      header.onclick = () => window.Store.toggleGroupCollapsed(g.path);
+      header.querySelector('.path-table').onclick = (e) => { e.stopPropagation(); window.TableView.open(g.path); };
+      group.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'path-body';
+      if (matches.length === 0) body.innerHTML = `<div class="empty-hint" style="padding:10px;font-size:11px;">No project folders found here.</div>`;
+      else matches.forEach((p) => {
+        const item = document.createElement('button');
+        item.className = 'project-item' + (p.path === activeProjectPath ? ' active' : '');
+        item.innerHTML = `<span class="pdot" style="background:${projectDot(p)}"></span><span class="pinfo"><span class="pname"></span><span class="pmeta"></span></span>`;
+        item.querySelector('.pname').textContent = p.name;
+        item.querySelector('.pmeta').textContent = projectMeta(p);
+        item.onclick = () => openProject(p);                              // reuse active tab (Obsidian)
+        item.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); openProject(p, { newTab: true }); } }); // middle => new tab
+        item.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e, p); });
+        body.appendChild(item);
+      });
+      group.appendChild(body);
+      host.appendChild(group);
+    });
+
+    const count = window.Store.projectCount();
+    $('#footCount').textContent = count + (count === 1 ? ' project' : ' projects');
+  }
+
+  function openProject(project, opts = {}) {
+    showPage('workspace');
+    window.Store.setActive(project.path);
+    $('#tbActiveProject').textContent = project.name;
+    window.Tabs.open({
+      id: 'project:' + project.path,
+      title: project.name,
+      icon: window.ICON.boardTab,
+      newTab: !!opts.newTab,
+      toSide: !!opts.toSide,
+      render: (pane) => window.ProjectBoard.render(pane, project),
+    });
+    $('#statusMid').textContent = project.name + ' · main';
+  }
+
+  // ---------- context menu ----------
+  function showContextMenu(e, project) {
+    document.querySelectorAll('.context-menu').forEach((m) => m.remove());
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    menu.innerHTML = `
+      <button data-act="open">Open</button>
+      <button data-act="newtab">Open in new tab</button>
+      <button data-act="side">Open to the right</button>
+      <button data-act="reveal">Copy path</button>`;
+    document.body.appendChild(menu);
+    menu.querySelector('[data-act="open"]').onclick = () => { openProject(project); menu.remove(); };
+    menu.querySelector('[data-act="newtab"]').onclick = () => { openProject(project, { newTab: true }); menu.remove(); };
+    menu.querySelector('[data-act="side"]').onclick = () => { openProject(project, { toSide: true }); menu.remove(); };
+    menu.querySelector('[data-act="reveal"]').onclick = () => { navigator.clipboard.writeText(project.path); setStatus('Path copied'); menu.remove(); };
+    const dismiss = (ev) => { if (ev && menu.contains(ev.target)) return; menu.remove(); document.removeEventListener('mousedown', dismiss); };
+    setTimeout(() => document.addEventListener('mousedown', dismiss), 0);
+  }
+
+  // ---------- actions ----------
+  async function rescan() { setStatus('Scanning library folders…'); await window.Store.rescan(); setStatus('All changes saved'); }
+
+  // Focus the project filter without discarding what the user already typed there.
+  function focusSearch() {
+    showPage('workspace');
+    const s = $('#projectSearch');
+    s.focus();
+    s.select();
+  }
+
+  // ---------- custom title bar ----------
+  // The window is frameless, so minimise/maximise/close live here. The ☰ button pops the native
+  // application menu, which is otherwise hidden (Alt also works).
+  const MAX_GLYPH = '';       // restore-down / maximise glyphs from the Segoe icon fonts
+  const RESTORE_GLYPH = '';
+
+  async function wireTitlebar() {
+    const maxBtn = $('#winMax');
+    const setMaxGlyph = (maximized) => {
+      if (!maxBtn) return;
+      maxBtn.textContent = maximized ? RESTORE_GLYPH : MAX_GLYPH;
+      maxBtn.title = maximized ? 'Restore' : 'Maximise';
+      maxBtn.setAttribute('aria-label', maxBtn.title);
+    };
+
+    // mousedown, not click: the mouseup that completes a click lands on the freshly-opened
+    // native menu and dismisses it again, so the menu appears never to open at all.
+    $('#menuBtn')?.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const r = e.currentTarget.getBoundingClientRect();
+      window.api.popupMenu(r.left, r.bottom);      // drop it under the button
+    });
+    $('#winMin')?.addEventListener('click', () => window.api.windowMinimize());
+    maxBtn?.addEventListener('click', async () => setMaxGlyph(await window.api.windowToggleMaximize()));
+    $('#winClose')?.addEventListener('click', () => window.api.windowClose());
+
+    // Double-clicking the bar itself toggles maximise, as a native title bar does.
+    $('#titlebar')?.addEventListener('dblclick', async (e) => {
+      if (e.target.closest('.tb-btn')) return;
+      setMaxGlyph(await window.api.windowToggleMaximize());
+    });
+
+    window.api.onWindowState(({ maximized }) => setMaxGlyph(maximized));
+    try {
+      document.documentElement.setAttribute('data-platform', await window.api.platform());
+      setMaxGlyph(await window.api.windowIsMaximized());
+    } catch { /* leave defaults */ }
+  }
+
+  // ---------- sidebar resizer ----------
+  function wireResizer() {
+    const rz = $('#panel-resizer');
+    const panel = $('#projectpanel');
+    rz.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX, startW = panel.getBoundingClientRect().width;
+      const move = (ev) => { panel.style.width = Math.max(180, Math.min(520, startW + (ev.clientX - startX))) + 'px'; };
+      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.style.cursor = ''; };
+      document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+      document.body.style.cursor = 'col-resize';
+    });
+  }
+
+  // ---------- wiring ----------
+  function wire() {
+    document.querySelectorAll('.ribbon-btn').forEach((btn) => btn.addEventListener('click', () => { if (btn.dataset.page) showPage(btn.dataset.page); }));
+    $('#rescanBtn').addEventListener('click', rescan);
+    $('#projectSearch').addEventListener('input', (e) => { searchTerm = e.target.value; renderProjectPanel(); });
+    $('#themeToggle')?.addEventListener('click', toggleTheme);
+
+    wireTitlebar();
+
+    setRibbonIcon('workspace', window.ICON.board);
+    setRibbonIcon('schema', window.ICON.schema);
+    setRibbonIcon('plugins', window.ICON.plugin);
+    setRibbonIcon('storage', window.ICON.storage);
+    setRibbonIcon('settings', window.ICON.gear);
+
+    window.api.onMenu('menu:open-folder', () => showPage('storage'));
+    window.api.onMenu('menu:scan-folder', rescan);
+    window.api.onMenu('menu:open-schema', () => showPage('schema'));
+    window.api.onMenu('menu:open-plugins', () => showPage('plugins'));
+
+    // keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      const el = document.activeElement;
+      const editing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      // None of these may fire while the user is typing — Ctrl+F used to yank you out of a
+      // note and wipe the project filter mid-sentence.
+      if (editing) return;
+      if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); focusSearch(); }            // filter project list
+      else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); window.QuickSwitcher.open(); } // quick switcher / search
+      else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); window.Undo.run(); } // app-level undo
+    });
+
+    // let the quick switcher open project boards
+    window.openProjectFromSwitcher = (project, opts) => openProject(project, opts);
+
+    wireResizer();
+    window.Store.subscribe(renderProjectPanel);
+    window.Tabs.onChange(saveSession);   // persist open tabs for session restore
+  }
+
+  // ---------- session restore ----------
+  function parseTabId(id) {
+    if (id.startsWith('project:')) return { kind: 'project', projectPath: id.slice(8) };
+    if (id.startsWith('note:')) { const rest = id.slice(5); const i = rest.lastIndexOf(':'); return { kind: 'note', projectPath: rest.slice(0, i), noteName: rest.slice(i + 1) }; }
+    return null;
+  }
+  const saveSession = debounce(() => { window.api.writeConfig('session.json', { tabs: window.Tabs.serialize() }).catch(() => {}); }, 600);
+  async function restoreSession() {
+    let s; try { s = await window.api.readConfig('session.json'); } catch { return; }
+    if (!s?.tabs?.length) return;
+    let activeId = null;
+
+    // Tabs are serialized with the index of the split group they were in. Restore that layout:
+    // the first tab of each new group opens "to the side", the rest join it.
+    const byGroup = new Map();
+    for (const t of s.tabs) {
+      const g = Number.isInteger(t.group) ? t.group : 0;
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g).push(t);
+    }
+
+    // A note that was renamed or deleted since last run must not come back as a phantom empty
+    // tab under its old name. Check what actually exists first (one listing per project).
+    const notesByProject = new Map();
+    for (const t of s.tabs) {
+      const parsed = parseTabId(t.id);
+      if (parsed?.kind !== 'note' || notesByProject.has(parsed.projectPath)) continue;
+      try { notesByProject.set(parsed.projectPath, await window.api.listNotes(parsed.projectPath)); }
+      catch { notesByProject.set(parsed.projectPath, []); }
+    }
+
+    let firstGroup = true;
+    for (const g of [...byGroup.keys()].sort((a, b) => a - b)) {
+      let firstInGroup = true;
+      for (const t of byGroup.get(g)) {
+        const parsed = parseTabId(t.id); if (!parsed) continue;
+        const project = window.Store.getProject(parsed.projectPath); if (!project) continue;
+        if (parsed.kind === 'note' && !(notesByProject.get(parsed.projectPath) || []).includes(parsed.noteName)) continue;
+        // toSide only for the first tab of each group after the first — that creates the split.
+        const opts = { newTab: true, toSide: !firstGroup && firstInGroup };
+        if (parsed.kind === 'project') openProject(project, opts);
+        else window.NotesView.open(project, parsed.noteName, opts);
+        if (t.pinned) window.Tabs.pin(t.id);
+        if (t.active) activeId = t.id;
+        firstInGroup = false;
+      }
+      firstGroup = false;
+    }
+    if (activeId) window.Tabs.focus(activeId);
+  }
+  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  function setRibbonIcon(page, svg) { const b = document.querySelector(`.ribbon-btn[data-page="${page}"]`); if (b) b.innerHTML = svg; }
+
+  async function updatePluginStatus() {
+    try { const plugins = await window.api.listPlugins(); $('#statusPlugins').textContent = plugins.length + (plugins.length === 1 ? ' plugin' : ' plugins') + ' active'; } catch { /* noop */ }
+  }
+  function escapeHtml(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+  async function boot() {
+    wire();
+    window.FsWatch.start();          // react to project data changed outside the app
+    await window.Store.loadConfig();
+    applyTheme(window.Store.state.settings.theme);
+    await window.Store.rescan();
+    renderProjectPanel();
+    updatePluginStatus();
+    await restoreSession();
+    setStatus('All changes saved');
+  }
+  document.addEventListener('DOMContentLoaded', boot);
+})();

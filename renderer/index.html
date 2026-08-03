@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- No remote origins: the app works fully offline and never phones home for assets. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' data:; frame-src 'self' pnplugin:; connect-src 'self';" />
+  <title>AEC Notebook</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- TITLE BAR — the window is frameless, so this is the drag handle and the window controls.
+       The application menu lives here behind the ☰ button rather than in a second row. -->
+  <div id="titlebar">
+    <button id="menuBtn" class="tb-btn tb-menu" title="Menu" aria-label="Menu" aria-haspopup="menu">☰</button>
+    <div class="tb-brand">
+      <span class="tb-logo">N</span>
+      <span class="tb-title">AEC Notebook</span>
+      <span class="tb-active" id="tbActiveProject"></span>
+    </div>
+    <div class="tb-spacer"></div>
+    <div class="tb-controls" id="winControls">
+      <button class="tb-btn" id="winMin" title="Minimise" aria-label="Minimise">&#xE921;</button>
+      <button class="tb-btn" id="winMax" title="Maximise" aria-label="Maximise">&#xE922;</button>
+      <button class="tb-btn tb-close" id="winClose" title="Close" aria-label="Close">&#xE8BB;</button>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div id="shell">
+    <!-- RIBBON -->
+    <aside id="ribbon">
+      <button class="ribbon-btn active" data-page="workspace" title="Workspace" aria-label="Workspace"></button>
+      <button class="ribbon-btn" data-page="schema" title="Schema Editor" aria-label="Schema Editor"></button>
+      <button class="ribbon-btn" data-page="plugins" title="Plugins" aria-label="Plugins"></button>
+      <button class="ribbon-btn" data-page="storage" title="Storage" aria-label="Storage"></button>
+      <div class="ribbon-spacer"></div>
+      <button class="ribbon-btn ghost" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
+      <button class="ribbon-btn ghost" data-page="settings" title="Settings" aria-label="Settings"></button>
+      <div class="ribbon-avatar">DL</div>
+    </aside>
+
+    <!-- PAGE: WORKSPACE -->
+    <section class="page" id="page-workspace">
+      <!-- project panel (grouped by library path) -->
+      <div id="projectpanel">
+        <div class="panel-header">
+          <span>Projects</span>
+        </div>
+        <div class="panel-search">
+          <span class="search-ico">⌕</span>
+          <input id="projectSearch" type="text" placeholder="Search projects…" />
+        </div>
+        <div id="projectGroups"></div>
+        <div id="projectEmpty" class="empty-hint">
+          No library folders yet.<br />Open <b>Storage</b> (left ribbon) and add a folder that contains your project folders.
+        </div>
+        <div class="panel-footer">
+          <span class="foot-status"><span class="dot ok"></span><span id="footCount">0 projects</span></span>
+          <button id="rescanBtn" class="mini-btn" title="Re-scan library folders for new or moved projects">⟳ Re-scan</button>
+        </div>
+      </div>
+
+      <!-- drag to resize the project panel -->
+      <div id="panel-resizer"></div>
+
+      <!-- main tabbed area (one or more side-by-side tab groups) -->
+      <div id="workspace-main">
+        <div id="welcomePane" class="welcome">
+          <div class="welcome-card">
+            <h2>Welcome to the AEC Notebook</h2>
+            <p>Add a library folder in <b>Storage</b>, then pick a project from the left to open its board and notes.</p>
+            <p style="font-size:12px;color:var(--muted-2);margin-top:14px;">Tip: middle-click or right-click a project to open it in a new tab · drag a tab to the right edge to split the view.</p>
+          </div>
+        </div>
+        <div id="tabgroups"></div>
+      </div>
+    </section>
+
+    <!-- PAGE: SCHEMA -->
+    <section class="page fullpage" id="page-schema" hidden></section>
+    <!-- PAGE: PLUGINS -->
+    <section class="page fullpage" id="page-plugins" hidden></section>
+    <!-- PAGE: STORAGE -->
+    <section class="page fullpage" id="page-storage" hidden></section>
+  </div>
+
+  <!-- STATUS BAR -->
+  <footer id="statusbar">
+    <div class="status-left">
+      <span class="si"><span class="si-dot"></span><span id="statusMsg">All changes saved</span></span>
+      <span id="statusMid"></span>
+    </div>
+    <div class="status-right">
+      <span class="mono">UTF-8</span>
+      <span class="mono">Markdown</span>
+      <span id="statusPlugins" class="mono">0 plugins active</span>
+    </div>
+  </footer>
+
+  <script src="vendor/marked.umd.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <script src="../src/shared/data_validation.js"></script>
+  <script src="modules/icons.js"></script>
+  <script src="modules/md.js"></script>
+  <script src="modules/attachments.js"></script>
+  <script src="modules/toast.js"></script>
+  <script src="modules/undo.js"></script>
+  <script src="modules/modal.js"></script>
+  <script src="modules/store.js"></script>
+  <script src="modules/fsWatch.js"></script>
+  <script src="modules/tabs.js"></script>
+  <script src="modules/schemaEditor.js"></script>
+  <script src="modules/projectBoard.js"></script>
+  <script src="modules/notes.js"></script>
+  <script src="modules/pluginBridge.js"></script>
+  <script src="modules/pluginsView.js"></script>
+  <script src="modules/storageView.js"></script>
+  <script src="modules/tableView.js"></script>
+  <script src="modules/quickSwitcher.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+*.exe
+*.blockmap
+builder-debug.yml
+builder-effective-config.yaml
+
+# Design handoff artefacts and internal docs (not source, not for publication)
+*.zip
+_design_preview/
+Project Brief.md
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# Local app data (when PNOTES_HOME points into the repo for testing)
+.pnotes-home/
