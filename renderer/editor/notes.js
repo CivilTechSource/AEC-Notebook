@@ -7,6 +7,9 @@
     window.Tabs.open({
       id: noteId(project, name), title: name.replace(/\.md$/, ''), icon: window.ICON.note,
       newTab: !!opts.newTab, toSide: !!opts.toSide,
+      // What the right sidebar needs to know about this tab. getBody/revealLine can only be
+      // supplied once the editor exists, so they're added in renderEditor via updateContext.
+      context: { kind: 'note', project, name },
       render: (pane, tab) => renderEditor(pane, tab, project, name, opts),
     });
   }
@@ -29,7 +32,6 @@
         <input class="note-title" id="noteTitle" placeholder="Untitled" />
         <textarea class="note-body" id="noteBody" placeholder="Start writing…  [[link]] to notes, #tag to categorise"></textarea>
         <div class="note-reading" id="noteReading" hidden></div>
-        <div class="note-backlinks" id="noteBacklinks" hidden></div>
         <div class="note-foot"><span id="noteStatus"></span><span style="flex:1"></span><span id="noteWords" class="mono"></span></div>
       </div>`;
 
@@ -52,15 +54,17 @@
       catch (err) { window.Toast?.error('Could not save note: ' + err.message); return; }
       flash('saved'); window.setStatus?.('Saved ' + state.name);
     }, 500);
-    bodyEl.addEventListener('input', () => { updateWords(); saveBody(); });
+    // The outline and outgoing-links panes read the live buffer, so they need to know it changed.
+    // Debounced separately from the save: those panes re-render, and doing that per keystroke
+    // makes typing feel heavy.
+    const announceBody = debounce(() => window.Events?.emit('note-body-changed', { id: tab.id }), 300);
+    bodyEl.addEventListener('input', () => { updateWords(); saveBody(); announceBody(); });
     // Closing the tab (or quitting) inside the 500 ms debounce window would otherwise drop
     // the last keystrokes — flush synchronously on teardown.
     window.Tabs.setDestroyHook(tab.id, () => saveBody.flush());
-    // Backlinks depend on OTHER notes, which may have changed while this tab sat in the
-    // background — recompute when it comes back to the front.
-    window.Tabs.setActivateHook(tab.id, () => { if (bodyEl.isConnected) refreshBacklinks(); });
     bodyEl.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveBody(); } });
-    window.Attach.wireEditor(bodyEl, project);   // drop / paste images & files
+    window.Attach.wireEditor(bodyEl, project);          // drop / paste images & files
+    window.WikilinkSuggest.attach(bodyEl, project);     // [[ … ]] completion
 
     // inline title rename
     const applyRename = async () => {
@@ -75,7 +79,10 @@
       state.name = finalName;
       titleEl.value = finalName.replace(/\.md$/, '');
       updateMeta();
-      window.Tabs.rekey(oldId, noteId(project, finalName), finalName.replace(/\.md$/, ''));
+      const newId = noteId(project, finalName);
+      window.Tabs.rekey(oldId, newId, finalName.replace(/\.md$/, ''));
+      // The sidebar keys off the note name; without this the panes keep querying the old one.
+      window.Tabs.updateContext(newId, { name: finalName });
       flash('renamed');
       await offerLinkRewrite(oldBase, finalName.replace(/\.md$/, ''));
     };
@@ -103,7 +110,7 @@
           window.FsWatch?.dispatch({ kind: 'note', projectPath: project.path, noteName: file });
         }
       } catch (err) { window.Toast?.error('Could not update links: ' + (err.message || err)); }
-      refreshBacklinks();
+      window.Tabs.emitActive();      // backlinks just changed under the sidebar's feet
     }
     titleEl.addEventListener('change', applyRename);
     titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyRename(); bodyEl.focus(); } });
@@ -120,25 +127,34 @@
         try { await window.api.writeNote(project.path, state.name, bodyEl.value); } catch { /* toast already */ }
         readEl.innerHTML = window.MD.render(bodyEl.value);
         wireReadingLinks(readEl, project);
+        window.HoverPreview.attach(readEl, project);    // peek at a [[link]] without following it
         window.Attach.resolveReadingView(readEl, project);   // load attachment images, wire file links
       }
-      refreshBacklinks();
     };
     pane.querySelectorAll('.seg-btn').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
     setMode(state.mode);
 
-    // ----- backlinks -----
-    async function refreshBacklinks() {
-      const host = pane.querySelector('#noteBacklinks');
-      let links = [];
-      try { links = await window.api.backlinks(project.path, state.name); } catch { /* ignore */ }
-      if (!links.length) { host.hidden = true; host.innerHTML = ''; return; }
-      host.hidden = false;
-      host.innerHTML = `<div class="bl-head">🔗 ${links.length} backlink${links.length === 1 ? '' : 's'}</div>` +
-        links.map((l) => `<div class="bl-row" data-note="${escAttr(l.noteName)}"><span class="bl-name">${escHtml(l.noteName.replace(/\.md$/, ''))}</span><span class="bl-snip">${escHtml(l.snippet)}</span></div>`).join('');
-      host.querySelectorAll('.bl-row').forEach((row) => row.onclick = () => open(project, row.dataset.note));
+    // ----- sidebar context -----
+    // Jumping to a heading is the editor's job: only it knows whether the textarea or the
+    // rendered view is on screen, and the two need completely different treatment.
+    function revealLine(lineIdx) {
+      if (!bodyEl.isConnected) return;
+      if (state.mode === 'reading') {
+        // The rendered headings appear in the same order as the parsed ones, so match by index.
+        const idx = window.MD.headings(bodyEl.value).findIndex((h) => h.line === lineIdx);
+        readEl.querySelectorAll('h1,h2,h3,h4,h5,h6')[idx]?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        return;
+      }
+      const lines = bodyEl.value.split('\n');
+      const pos = lines.slice(0, lineIdx).reduce((n, l) => n + l.length + 1, 0);
+      bodyEl.focus();
+      bodyEl.setSelectionRange(pos, pos + (lines[lineIdx] || '').length);
+      // The textarea grows to fit its content, so it's the PANE that scrolls, not the box.
+      const lh = parseFloat(getComputedStyle(bodyEl).lineHeight) || 22;
+      const scroller = pane.closest('.tabpanes');
+      if (scroller) scroller.scrollTop = Math.max(0, bodyEl.offsetTop + lineIdx * lh - scroller.clientHeight / 3);
     }
-    refreshBacklinks();
+    window.Tabs.updateContext(tab.id, { getBody: () => bodyEl.value, revealLine });
 
     // ----- changed on disk -----
     // Someone edited this note in another editor. Reload silently if the user has no unsaved
@@ -152,7 +168,7 @@
       let disk = '';
       try { disk = await window.api.readNote(project.path, state.name); } catch { return; }
       if (disk === bodyEl.value) { dirty = false; return; }
-      if (!dirty) { bodyEl.value = disk; updateWords(); if (state.mode === 'reading') setMode('reading'); flash('reloaded from disk'); return; }
+      if (!dirty) { bodyEl.value = disk; updateWords(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('reloaded from disk'); return; }
       const keepMine = await window.Modal.confirm({
         title: 'This note changed on disk',
         body: `“${state.name}” was edited outside the app while you had unsaved changes. Keep your version, or discard it and load the one on disk?`,
@@ -160,7 +176,7 @@
         cancelText: 'Load from disk',
       });
       if (keepMine) { originalSave.flush(); }
-      else { bodyEl.value = disk; dirty = false; updateWords(); if (state.mode === 'reading') setMode('reading'); flash('loaded from disk'); }
+      else { bodyEl.value = disk; dirty = false; updateWords(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('loaded from disk'); }
     };
     window.FsWatch?.subscribe(onExternal, bodyEl);
 
@@ -193,8 +209,6 @@
     f.flush = () => { clearTimeout(t); if (lastArgs) fn(...lastArgs); };
     return f;
   }
-  function escHtml(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
-  function escAttr(s) { return String(s ?? '').replace(/"/g, '&quot;'); }
 
   window.NotesView = { open };
 })();

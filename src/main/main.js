@@ -8,6 +8,7 @@ const searchIndex = require('./services/searchIndex');
 const watcher = require('./services/watcher');
 const { buildMenu } = require('./menu');
 const { drainOnQuit } = require('./writeTracker');
+const windowState = require('./windowState');
 const ipc = require('./ipc');
 
 // Plugin pages are served from their own scheme so they get an independent CSP
@@ -20,10 +21,9 @@ const APP_ROOT = path.join(__dirname, '..', '..');
 
 const IS_MAC = process.platform === 'darwin';
 
-function createWindow() {
+function createWindow(restored = { bounds: windowState.DEFAULTS, maximized: false }) {
   const win = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    ...restored.bounds,
     minWidth: 1100,
     minHeight: 700,
     title: 'AEC Notebook',
@@ -43,7 +43,10 @@ function createWindow() {
   });
 
   win.loadFile(path.join(APP_ROOT, 'renderer', 'index.html'));
+  // Maximise before showing, or the window visibly snaps a frame after appearing.
+  if (restored.maximized) win.maximize();
   win.once('ready-to-show', () => win.show());
+  windowState.track(win);
 
   // A link in a rendered note must never navigate the app window off index.html — that leaves
   // the user in a browser with no way back. Send external links to the real browser instead.
@@ -110,7 +113,7 @@ if (!gotLock) {
     registerPluginProtocol();
     ipc.registerAll({ appRoot: APP_ROOT });
 
-    mainWin = createWindow();
+    mainWin = createWindow(await windowState.load());
     buildMenu(mainWin);
 
     // Tell the renderer when project data changes on disk outside the app.
@@ -118,8 +121,8 @@ if (!gotLock) {
       searchIndex.invalidate();
       if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('fs:changed', change);
     });
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) { mainWin = createWindow(); buildMenu(mainWin); }
+    app.on('activate', async () => {
+      if (BrowserWindow.getAllWindows().length === 0) { mainWin = createWindow(await windowState.load()); buildMenu(mainWin); }
     });
   });
 }

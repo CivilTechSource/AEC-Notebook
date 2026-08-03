@@ -13,6 +13,34 @@ function loadMD() {
 
 const MD = loadMD();
 
+test('headings returns level, text and line number', () => {
+  const src = '# Site visit\nsome prose\n## Access\n### Gate code\n';
+  assert.deepStrictEqual(MD.headings(src), [
+    { level: 1, text: 'Site visit', line: 0 },
+    { level: 2, text: 'Access', line: 2 },
+    { level: 3, text: 'Gate code', line: 3 },
+  ]);
+});
+
+test('headings ignores # inside fenced code blocks', () => {
+  // A shebang or a shell comment in a sample is not a heading — this is the whole reason
+  // headings() tracks fences rather than just scanning lines.
+  const src = '# Real\n```sh\n#!/bin/sh\n# not a heading\n```\n## Also real';
+  assert.deepStrictEqual(MD.headings(src).map((h) => h.text), ['Real', 'Also real']);
+});
+
+test('headings handles tilde fences and unclosed fences', () => {
+  assert.deepStrictEqual(MD.headings('~~~\n# hidden\n~~~\n# shown').map((h) => h.text), ['shown']);
+  // An unclosed fence swallows the rest of the note, which matches how it renders.
+  assert.deepStrictEqual(MD.headings('# before\n```\n# after').map((h) => h.text), ['before']);
+});
+
+test('headings strips ATX closing hashes and requires a space', () => {
+  assert.deepStrictEqual(MD.headings('## Levels ##').map((h) => h.text), ['Levels']);
+  assert.deepStrictEqual(MD.headings('#no-space').length, 0);   // that's a tag, not a heading
+  assert.deepStrictEqual(MD.headings('####### too deep').length, 0);
+});
+
 test('preprocess leaves plain prose containing numbers untouched', () => {
   const s = 'The pipe is 300 mm dia and 12 m long.';
   assert.strictEqual(MD.preprocess(s), s);

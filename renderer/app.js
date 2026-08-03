@@ -28,6 +28,9 @@
   };
   function showPage(page) {
     if (page === 'settings') page = 'storage';
+    // Clicking Workspace while already on it — and with the panel hidden — brings it back.
+    // Without this the collapse button would be a one-way door.
+    if (page === 'workspace' && !$('#page-workspace').hidden && leftCollapsed) setLeftCollapsed(false);
     document.querySelectorAll('.ribbon-btn').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
     document.querySelectorAll('.page').forEach((p) => { p.hidden = p.id !== `page-${page}`; });
     if (PAGE_RENDER[page]) PAGE_RENDER[page]();
@@ -99,6 +102,8 @@
       icon: window.ICON.boardTab,
       newTab: !!opts.newTab,
       toSide: !!opts.toSide,
+      // No note here, but the Tags pane is project-scoped and still has something to show.
+      context: { kind: 'project', project },
       render: (pane) => window.ProjectBoard.render(pane, project),
     });
     $('#statusMid').textContent = project.name + ' · main';
@@ -175,7 +180,20 @@
     } catch { /* leave defaults */ }
   }
 
-  // ---------- sidebar resizer ----------
+  // ---------- left panel: resize + collapse ----------
+  let leftCollapsed = false;
+
+  function setLeftCollapsed(val) {
+    leftCollapsed = !!val;
+    $('#projectpanel').hidden = leftCollapsed;
+    $('#panel-resizer').hidden = leftCollapsed;
+    // The ribbon button doubles as the way back, so reflect the state on it.
+    const btn = document.querySelector('.ribbon-btn[data-page="workspace"]');
+    if (btn) btn.title = leftCollapsed ? 'Show project panel' : 'Workspace';
+    saveSession();
+  }
+  function toggleLeftCollapsed() { setLeftCollapsed(!leftCollapsed); }
+
   function wireResizer() {
     const rz = $('#panel-resizer');
     const panel = $('#projectpanel');
@@ -183,10 +201,16 @@
       e.preventDefault();
       const startX = e.clientX, startW = panel.getBoundingClientRect().width;
       const move = (ev) => { panel.style.width = Math.max(180, Math.min(520, startW + (ev.clientX - startX))) + 'px'; };
-      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.style.cursor = ''; };
+      const up = () => {
+        document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+        document.body.style.cursor = ''; saveSession();
+      };
       document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
       document.body.style.cursor = 'col-resize';
     });
+    // Double-clicking the resizer collapses, the way dragging it to zero would in an editor.
+    rz.addEventListener('dblclick', toggleLeftCollapsed);
+    $('#panelCollapse')?.addEventListener('click', () => setLeftCollapsed(true));
   }
 
   // ---------- wiring ----------
@@ -203,6 +227,7 @@
     setRibbonIcon('plugins', window.ICON.plugin);
     setRibbonIcon('storage', window.ICON.storage);
     setRibbonIcon('settings', window.ICON.gear);
+    const pc = $('#panelCollapse'); if (pc) pc.innerHTML = window.ICON.collapse;
 
     window.api.onMenu('menu:open-folder', () => showPage('storage'));
     window.api.onMenu('menu:scan-folder', rescan);
@@ -227,7 +252,8 @@
 
     wireResizer();
     window.Store.subscribe(renderProjectPanel);
-    window.Tabs.onChange(saveSession);   // persist open tabs for session restore
+    window.Tabs.onChange(saveSession);       // persist open tabs for session restore
+    window.Sidebar?.onChange?.(saveSession); // …and the right sidebar's width / active pane
   }
 
   // ---------- session restore ----------
@@ -236,9 +262,32 @@
     if (id.startsWith('note:')) { const rest = id.slice(5); const i = rest.lastIndexOf(':'); return { kind: 'note', projectPath: rest.slice(0, i), noteName: rest.slice(i + 1) }; }
     return null;
   }
-  const saveSession = debounce(() => { window.api.writeConfig('session.json', { tabs: window.Tabs.serialize() }).catch(() => {}); }, 600);
+  function currentLayout() {
+    const panel = $('#projectpanel');
+    return {
+      left: { width: Math.round(panel.getBoundingClientRect().width) || null, collapsed: leftCollapsed },
+      right: window.Sidebar?.getLayout?.() || null,
+      splitDir: window.Tabs.getSplitDir(),
+    };
+  }
+  const saveSession = debounce(() => {
+    window.api.writeConfig('session.json', { tabs: window.Tabs.serialize(), layout: currentLayout() }).catch(() => {});
+  }, 600);
+
+  function applyLayout(l) {
+    if (!l) return;
+    // Width first, then collapsed — restoring collapsed hides the panel, and measuring a hidden
+    // element to re-apply its width afterwards gives zero.
+    if (Number.isFinite(l.left?.width)) $('#projectpanel').style.width = Math.max(180, Math.min(520, l.left.width)) + 'px';
+    if (l.left?.collapsed) setLeftCollapsed(true);
+    window.Sidebar?.applyLayout?.(l.right);
+    // Set before tabs are restored so the split groups are created along the right axis.
+    if (l.splitDir) window.Tabs.setSplitDir(l.splitDir);
+  }
+
   async function restoreSession() {
     let s; try { s = await window.api.readConfig('session.json'); } catch { return; }
+    applyLayout(s?.layout);              // layout is restored even if no tabs were open
     if (!s?.tabs?.length) return;
     let activeId = null;
 

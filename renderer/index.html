@@ -54,6 +54,8 @@
       <div id="projectpanel">
         <div class="panel-header">
           <span>Projects</span>
+          <span class="ph-spacer"></span>
+          <button id="panelCollapse" class="ph-collapse" title="Collapse panel" aria-label="Collapse project panel"></button>
         </div>
         <div class="panel-search">
           <span class="search-ico">⌕</span>
@@ -83,6 +85,18 @@
         </div>
         <div id="tabgroups"></div>
       </div>
+
+      <!-- RIGHT SIDEBAR — drag to resize, then a panel, then a fixed icon rail on the edge.
+           The rail always stays visible so a collapsed sidebar is still discoverable. -->
+      <div id="rightbar-resizer"></div>
+      <div id="rightbar-panel">
+        <div class="rb-title">
+          <span class="rb-title-text"></span>
+          <button class="rb-collapse" id="rbCollapse" title="Collapse sidebar" aria-label="Collapse sidebar"></button>
+        </div>
+        <div class="rb-body"></div>
+      </div>
+      <aside id="rightbar-rail" role="tablist" aria-label="Sidebar panes"></aside>
     </section>
 
     <!-- PAGE: SCHEMA -->
@@ -121,17 +135,27 @@
   <script src="core/toast.js"></script>
   <script src="core/undo.js"></script>
   <script src="core/modal.js"></script>
+  <script src="core/popover.js"></script>
   <script src="core/store.js"></script>
   <script src="core/fsWatch.js"></script>
   <script src="workspace/tabs.js"></script>
+  <script src="workspace/sidebar.js"></script>
   <script src="views/schemaEditor.js"></script>
   <script src="views/projectBoard.js"></script>
+  <script src="editor/wikilinkSuggest.js"></script>
+  <script src="editor/hoverPreview.js"></script>
   <script src="editor/notes.js"></script>
   <script src="plugins/pluginBridge.js"></script>
   <script src="plugins/pluginsView.js"></script>
   <script src="views/storageView.js"></script>
   <script src="views/tableView.js"></script>
   <script src="views/quickSwitcher.js"></script>
+  <!-- Sidebar panes register themselves, so they load after sidebar.js and after the views
+       they open (notes, quick switcher). Rail order follows this order. -->
+  <script src="panels/backlinks.js"></script>
+  <script src="panels/outline.js"></script>
+  <script src="panels/outlinks.js"></script>
+  <script src="panels/tags.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

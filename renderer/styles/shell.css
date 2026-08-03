@@ -82,12 +82,23 @@
   width: 248px; flex: none; background: var(--bg-panel);
   border-right: 1px solid var(--line); display: flex; flex-direction: column;
 }
+/* display:flex above beats the hidden attribute's default display:none, so collapsing needs
+   this to be said explicitly. Same for the resizer. */
+#projectpanel[hidden] { display: none; }
+#panel-resizer[hidden] { display: none; }
 .panel-header {
   height: 38px; flex: none; display: flex; align-items: center;
-  padding: 0 12px; border-bottom: 1px solid var(--line);
+  padding: 0 6px 0 12px; border-bottom: 1px solid var(--line);
   font-size: 11px; font-weight: 600; letter-spacing: .6px;
   color: var(--muted); text-transform: uppercase;
 }
+.ph-spacer { flex: 1; }
+.ph-collapse {
+  width: 24px; height: 24px; border-radius: var(--radius-sm); flex: none;
+  display: flex; align-items: center; justify-content: center; color: var(--muted-2);
+  transform: rotate(180deg);      /* the shared chevron points right; this panel closes leftwards */
+}
+.ph-collapse:hover { background: var(--hover); color: var(--text); }
 .panel-search { padding: 8px; flex: none; }
 .panel-search {
   display: flex; align-items: center;
@@ -167,9 +178,13 @@
 #workspace-main { flex: 1; display: flex; min-width: 0; position: relative; }
 #tabgroups { flex: 1; display: flex; min-width: 0; }
 
-.tabgroup { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; border-left: 1px solid var(--line); }
+.tabgroup { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); }
 .tabgroup:first-child { border-left: none; }
+/* When groups stack, the divider between them is horizontal instead of vertical. */
+#tabgroups.stacked .tabgroup { border-left: none; border-top: 1px solid var(--line); }
+#tabgroups.stacked .tabgroup:first-child { border-top: none; }
 .group-resizer { width: 5px; flex: none; cursor: col-resize; background: var(--line); }
+.group-resizer.vertical { width: auto; height: 5px; cursor: row-resize; }
 .group-resizer:hover { background: var(--accent); }
 
 .tabstrip {
@@ -196,18 +211,104 @@
 .tabpanes { flex: 1; overflow: auto; min-height: 0; background: var(--bg); position: relative; }
 .pane[hidden] { display: none; }
 
+/* Drop targets shown while a tab is being dragged: right edge splits side-by-side,
+   bottom edge stacks. The bottom one stops short of the right one so they don't overlap. */
 .split-zone {
-  position: absolute; top: 38px; right: 0; bottom: 0; width: 90px; z-index: 30;
-  background: var(--accent-tint); border-left: 2px dashed var(--accent);
-  display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 12px; pointer-events: all;
+  position: absolute; z-index: 30;
+  background: var(--accent-tint);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent); font-size: 12px; pointer-events: all;
 }
 .split-zone.over { background: var(--accent-tint-strong); }
+.split-zone.split-right { top: 38px; right: 0; bottom: 0; width: 90px; border-left: 2px dashed var(--accent); }
+.split-zone.split-down { left: 0; right: 90px; bottom: 0; height: 90px; border-top: 2px dashed var(--accent); }
 
 #welcomePane { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; align-items: center; justify-content: center; }
 #welcomePane[hidden] { display: none; }
 .welcome-card { max-width: 480px; text-align: center; padding: 30px; }
 .welcome-card h2 { font-size: 20px; font-weight: 600; margin: 0 0 10px; }
 .welcome-card p { color: var(--muted); line-height: 1.6; margin: 0; }
+
+/* ---------- RIGHT SIDEBAR ----------
+   Rail on the window edge, panel inboard of it, resizer inboard of that. The rail survives
+   collapsing so the panes stay reachable; only the panel and its resizer hide. */
+#rightbar-resizer { width: 5px; flex: none; cursor: col-resize; background: transparent; }
+#rightbar-resizer:hover { background: var(--accent); }
+#rightbar-resizer[hidden] { display: none; }
+
+#rightbar-panel {
+  width: 280px; flex: none; background: var(--bg-panel);
+  border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0;
+}
+#rightbar-panel[hidden] { display: none; }
+
+.rb-title {
+  height: 38px; flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 0 6px 0 12px; border-bottom: 1px solid var(--line);
+}
+.rb-title-text {
+  flex: 1; min-width: 0; font-size: var(--fs-xs); font-weight: 600; letter-spacing: .6px;
+  color: var(--muted); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rb-collapse {
+  width: 24px; height: 24px; border-radius: var(--radius-sm); flex: none;
+  display: flex; align-items: center; justify-content: center; color: var(--muted-2);
+}
+.rb-collapse:hover { background: var(--hover); color: var(--text); }
+
+.rb-body { flex: 1; overflow-y: auto; min-height: 0; padding: var(--sp-3) var(--sp-2); }
+.rb-pane[hidden] { display: none; }
+
+.rb-count {
+  font-size: 10.5px; color: var(--muted-2); text-transform: uppercase; letter-spacing: .5px;
+  padding: 0 var(--sp-2) var(--sp-2);
+}
+.rb-row {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  width: 100%; text-align: left; padding: var(--sp-2) 10px;
+  border-radius: var(--radius-sm); cursor: default;
+}
+.rb-row:hover { background: var(--hover); }
+.rb-row-name { display: block; font-size: 12.5px; color: var(--accent); width: 100%; overflow-wrap: anywhere; }
+.rb-row-sub {
+  display: block; font-size: var(--fs-xs); color: var(--muted-2); width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rb-empty { color: var(--muted-2); font-size: var(--fs-sm); line-height: 1.6; padding: 18px 12px; text-align: center; }
+
+/* outline rows are indented by heading depth, so they lay out in a row rather than stacked */
+.rb-outline-row { flex-direction: row; align-items: baseline; gap: var(--sp-3); }
+.rb-outline-row .rb-row-name { color: var(--text-2); flex: 1; }
+.rb-outline-row:hover .rb-row-name { color: var(--text); }
+.rb-h-level { font-family: var(--mono); font-size: 10px; color: var(--faint); flex: none; }
+
+/* a [[link]] whose note doesn't exist yet */
+.rb-dangling { color: var(--muted); border-bottom: 1px dashed var(--line-4); }
+
+.rb-tag-row { flex-direction: row; align-items: center; gap: var(--sp-3); }
+.rb-tag-row .tag { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.rb-tag-count { flex: none; font-size: var(--fs-xs); color: var(--muted-2); font-family: var(--mono); }
+
+#rightbar-rail {
+  width: 38px; flex: none; background: var(--bg-dark);
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--sp-2) 0; gap: var(--sp-1); border-left: 1px solid var(--line);
+}
+.rb-btn {
+  width: 30px; height: 30px; border-radius: var(--radius-sm); position: relative;
+  display: flex; align-items: center; justify-content: center; color: var(--muted);
+}
+.rb-btn svg { display: block; }
+.rb-btn:hover { background: var(--hover-strong); color: var(--text); }
+.rb-btn.active { background: var(--hover-strong); color: var(--text); }
+/* Mirrors the ribbon's pill, on the outboard edge. The offset must equal this rail's side
+   gutter ((38px rail - 30px button) / 2 = 4px) and no more: the rail sits flush against the
+   window, so anything larger puts the pill off-screen where it can't be seen at all. */
+.rb-btn.active::before {
+  content: ''; position: absolute; right: -4px; top: 6px; bottom: 6px;
+  width: 3px; border-radius: 3px; background: var(--accent);
+}
 
 /* ---------- STATUS BAR ---------- */
 #statusbar {

@@ -84,6 +84,41 @@ textarea { resize: vertical; min-height: 80px; }
 .modal { background: var(--bg-panel); border: 1px solid var(--line-3); border-radius: 12px; padding: 22px; width: 460px; max-width: 90%; max-height: 86%; overflow: auto; }
 .modal h3 { margin: 0 0 16px; font-size: 16px; }
 
+/* ---------- popover (wikilink suggester + hover preview) ---------- */
+.popover {
+  position: fixed; z-index: 250;
+  background: var(--bg-panel); border: 1px solid var(--line-3); border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+  overflow: hidden;
+}
+
+.pop-list { display: flex; flex-direction: column; padding: var(--sp-1); }
+.pop-item {
+  display: block; width: 100%; text-align: left;
+  padding: var(--sp-2) 10px; border-radius: var(--radius-sm);
+  font-size: 12.5px; color: var(--text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pop-item:hover { background: var(--hover); color: var(--text); }
+.pop-item.active { background: var(--accent-tint); color: var(--text); }
+.pop-hint {
+  padding: var(--sp-2) 10px 4px; margin-top: 2px; border-top: 1px solid var(--line);
+  font-size: 10.5px; color: var(--muted-2);
+}
+
+.pop-preview { padding: var(--sp-4); }
+.pop-preview-title {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  padding-bottom: var(--sp-2); margin-bottom: var(--sp-2); border-bottom: 1px solid var(--line);
+}
+.pop-preview-body { position: relative; max-height: 300px; overflow: hidden; font-size: 12.5px; }
+/* Fade the clipped edge so a truncated preview doesn't look like the note simply ends. */
+.pop-preview-body::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
+  background: linear-gradient(transparent, var(--bg-panel)); pointer-events: none;
+}
+.pop-preview-empty { color: var(--muted-2); font-size: var(--fs-sm); line-height: 1.6; }
+
 /* ---------- toasts ---------- */
 #toastHost { position: fixed; right: 16px; bottom: 34px; z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .toast {

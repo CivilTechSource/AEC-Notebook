@@ -8,7 +8,11 @@
   let activeGroup = null;
   const tabIndex = new Map();          // id -> tab  ({id,title,icon,render,pinned,tabEl,paneEl,group})
   const MAX_GROUPS = 3;
-  let splitZone = null;
+  // Groups are a flat list laid out along one axis, not a nested tree: dropping on the right
+  // edge lays them out in a row, on the bottom edge in a column, and the choice applies to the
+  // whole workspace. That covers side-by-side and stacked without the bookkeeping a tree needs.
+  let splitDir = 'row';
+  let splitZones = [];
 
   const container = () => document.getElementById('tabgroups');
   const welcome = () => document.getElementById('welcomePane');
@@ -50,22 +54,39 @@
   function relayout() {
     const c = container();
     c.querySelectorAll('.group-resizer').forEach((r) => r.remove());
+    c.style.flexDirection = splitDir;
+    c.classList.toggle('stacked', splitDir === 'column');
     groups.forEach((g, i) => { c.appendChild(g.el); if (i < groups.length - 1) c.appendChild(makeResizer(g, groups[i + 1])); });
   }
 
-  function makeResizer(left, right) {
-    const r = document.createElement('div'); r.className = 'group-resizer';
+  // One resizer, two axes. The only differences are which coordinate and which dimension to
+  // read, so they're picked up front rather than branching inside the mousemove.
+  function makeResizer(first, second) {
+    const vertical = splitDir === 'column';
+    const r = document.createElement('div');
+    r.className = 'group-resizer' + (vertical ? ' vertical' : '');
     r.addEventListener('mousedown', (e) => {
-      const startX = e.clientX, lw = left.el.getBoundingClientRect().width, rw = right.el.getBoundingClientRect().width, total = lw + rw;
-      const move = (ev) => { const nl = Math.max(200, Math.min(total - 200, lw + ev.clientX - startX)); left.el.style.flex = `0 0 ${nl}px`; right.el.style.flex = '1 1 0'; };
-      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.style.cursor = ''; };
-      document.addEventListener('mousemove', move); document.addEventListener('mouseup', up); document.body.style.cursor = 'col-resize';
+      const start = vertical ? e.clientY : e.clientX;
+      const size = (g) => (vertical ? g.el.getBoundingClientRect().height : g.el.getBoundingClientRect().width);
+      const a = size(first), total = a + size(second);
+      const move = (ev) => {
+        const delta = (vertical ? ev.clientY : ev.clientX) - start;
+        const na = Math.max(120, Math.min(total - 120, a + delta));
+        first.el.style.flex = `0 0 ${na}px`;
+        second.el.style.flex = '1 1 0';
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+        document.body.style.cursor = ''; fireChange();
+      };
+      document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+      document.body.style.cursor = vertical ? 'row-resize' : 'col-resize';
     });
     return r;
   }
 
   // ---------- open ----------
-  function open({ id, title, icon, render, newTab = false, toSide = false, pinned = false }) {
+  function open({ id, title, icon, render, context = null, newTab = false, toSide = false, pinned = false }) {
     if (tabIndex.has(id)) { const t = tabIndex.get(id); activeGroup = t.group; activate(t.group, id); return t; }
     if (!groups.length) activeGroup = createGroup();
 
@@ -75,9 +96,9 @@
     // Obsidian reuse: replace the active (unpinned) tab in place unless a new tab is requested.
     if (!newTab && group.activeId) {
       const active = tabIndex.get(group.activeId);
-      if (active && !active.pinned) { rebind(active, { id, title, icon, render }); return active; }
+      if (active && !active.pinned) { rebind(active, { id, title, icon, render, context }); return active; }
     }
-    return createTab(group, { id, title, icon, render, pinned });
+    return createTab(group, { id, title, icon, render, context, pinned });
   }
 
   function sideGroup(from) {
@@ -87,7 +108,7 @@
     return createGroup();
   }
 
-  function createTab(group, { id, title, icon, render, pinned }) {
+  function createTab(group, { id, title, icon, render, context, pinned }) {
     const tabEl = document.createElement('div');
     tabEl.className = 'tab' + (pinned ? ' pinned' : '');
     tabEl.draggable = true;
@@ -97,7 +118,7 @@
     tabEl.querySelector('.ttl').textContent = title;
     tabEl._getId = () => id; // updated on rebind via closure swap below
 
-    const tab = { id, title, icon, render, pinned, tabEl, paneEl: null, group };
+    const tab = { id, title, icon, render, pinned, context: context || null, tabEl, paneEl: null, group };
     tabEl._tab = tab;
 
     tabEl.addEventListener('click', () => { activeGroup = tab.group; activate(tab.group, tab.id); });
@@ -135,10 +156,10 @@
   }
 
   // Replace a tab's content in place (Obsidian "open in active tab").
-  function rebind(tab, { id, title, icon, render }) {
+  function rebind(tab, { id, title, icon, render, context }) {
     runDestroyHook(tab);          // the outgoing content may have unsaved work
     tabIndex.delete(tab.id);
-    tab.id = id; tab.title = title; tab.icon = icon; tab.render = render;
+    tab.id = id; tab.title = title; tab.icon = icon; tab.render = render; tab.context = context || null;
     tab.tabEl.querySelector('.ttl').textContent = title;
     tab.tabEl.querySelector('.tab-ico').innerHTML = icon || '';
     tabIndex.set(id, tab);
@@ -161,6 +182,23 @@
     // files (backlinks, note lists) would show whatever was true when the tab was first opened.
     const tab = tabIndex.get(id);
     try { tab.onActivate?.(); } catch (e) { console.error('tab onActivate failed', e); }
+    emitActive();
+  }
+
+  // Tell the right sidebar which tab is in front. Deliberately not deduplicated: re-activating
+  // the same tab is exactly the "came back to the front" signal panes need in order to recompute
+  // from other files, same reason onActivate exists.
+  function emitActive() {
+    const tab = activeGroup?.activeId ? tabIndex.get(activeGroup.activeId) : null;
+    window.Events?.emit('active-tab-changed', tab ? { id: tab.id, ...(tab.context || {}) } : null);
+  }
+
+  // A pane learns things about itself only after it renders (a note's textarea, for one), so it
+  // can top up its context afterwards. Merges rather than replaces.
+  function updateContext(id, patch) {
+    const t = tabIndex.get(id); if (!t) return;
+    t.context = { ...(t.context || {}), ...(patch || {}) };
+    if (activeGroup?.activeId === id) emitActive();
   }
 
   function setPinned(tab, val) { tab.pinned = val; tab.tabEl.classList.toggle('pinned', val); fireChange(); }
@@ -192,6 +230,7 @@
     if (group.tabs.length === 0) removeGroup(group);
     syncWelcome();
     fireChange();
+    emitActive();   // closing the last tab has to clear the sidebar, and activate() won't run
   }
 
   function closeOthers(keep) {
@@ -226,24 +265,37 @@
   }
   function rebuildOrder(group) { group.tabs = [...group.stripEl.querySelectorAll('.tab')].map((el) => el._tab).filter(Boolean); }
 
-  // ---------- split zone ----------
+  // ---------- split zones ----------
+  // Two drop targets while dragging: the right edge splits side-by-side, the bottom edge stacks.
+  // The one you drop on decides the layout axis for the whole workspace.
+  const ZONES = [
+    { dir: 'row', cls: 'split-right', label: 'Split →' },
+    { dir: 'column', cls: 'split-down', label: 'Split ↓' },
+  ];
+
   function showSplitZone() {
     if (groups.length >= MAX_GROUPS) return;
-    if (!splitZone) {
-      splitZone = document.createElement('div');
-      splitZone.className = 'split-zone';
-      splitZone.innerHTML = '<span>Split →</span>';
-      splitZone.addEventListener('dragover', (e) => { e.preventDefault(); splitZone.classList.add('over'); });
-      splitZone.addEventListener('dragleave', () => splitZone.classList.remove('over'));
-      splitZone.addEventListener('drop', (e) => {
-        e.preventDefault(); splitZone.classList.remove('over');
-        const id = e.dataTransfer.getData('text/tab'); if (!id) return;
-        const g2 = createGroup(); dropInto(id, g2, Infinity); hideSplitZone();
+    if (!splitZones.length) {
+      splitZones = ZONES.map((z) => {
+        const el = document.createElement('div');
+        el.className = `split-zone ${z.cls}`;
+        el.innerHTML = `<span>${z.label}</span>`;
+        el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('over'); });
+        el.addEventListener('dragleave', () => el.classList.remove('over'));
+        el.addEventListener('drop', (e) => {
+          e.preventDefault(); el.classList.remove('over');
+          const id = e.dataTransfer.getData('text/tab'); if (!id) return;
+          splitDir = z.dir;
+          const g2 = createGroup();     // createGroup relayouts, picking up the new direction
+          dropInto(id, g2, Infinity);
+          hideSplitZone();
+        });
+        return el;
       });
     }
-    container().appendChild(splitZone);
+    splitZones.forEach((el) => container().appendChild(el));
   }
-  function hideSplitZone() { if (splitZone && splitZone.parentElement) splitZone.remove(); }
+  function hideSplitZone() { splitZones.forEach((el) => el.remove()); }
 
   // ---------- tab context menu ----------
   function tabMenu(e, tab) {
@@ -281,6 +333,14 @@
     groups.forEach((g, gi) => g.tabs.forEach((t) => out.push({ id: t.id, pinned: !!t.pinned, active: g.activeId === t.id, group: gi })));
     return out;
   }
+  function getSplitDir() { return splitDir; }
+  function setSplitDir(dir) {
+    const next = dir === 'column' ? 'column' : 'row';
+    if (next === splitDir) return;
+    splitDir = next;
+    if (groups.length) relayout();
+  }
+
   // change a tab's id (used when a note is renamed and its id encodes the name)
   function rekey(oldId, newId, newTitle) {
     const t = tabIndex.get(oldId); if (!t) return;
@@ -298,5 +358,5 @@
   document.addEventListener('DOMContentLoaded', () => { if (!groups.length) { activeGroup = createGroup(); syncWelcome(); } });
   window.addEventListener('beforeunload', flushAll);
 
-  window.Tabs = { open, close, has, getPane, setTitle, rekey, pin, focus, onChange, serialize, setDestroyHook, setActivateHook, flushAll };
+  window.Tabs = { open, close, has, getPane, setTitle, rekey, pin, focus, onChange, serialize, setDestroyHook, setActivateHook, flushAll, updateContext, emitActive, getSplitDir, setSplitDir };
 })();
