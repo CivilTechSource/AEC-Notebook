@@ -1,37 +1,77 @@
+<div align="center">
+
+<img src="icon.png" alt="AEC Notebook" width="96" />
+
 # AEC Notebook
 
-A desktop notebook for project folders. Point it at the folders you already have on disk, define
-the fields *you* care about per library folder, and keep markdown notes next to the work they
-describe. Nothing is locked in the app: project info is plain JSON, notes are plain `.md`.
+**Turn the project folders you already have into a searchable, structured notebook.**
 
-Built with Electron. MIT licensed.
+Point it at your projects drive. Define the fields *you* care about. Keep site notes beside the
+work they describe — in plain JSON and Markdown you can still open without this app.
 
-## Why
+[Download](#download) · [Getting started](#getting-started) · [Writing plugins](PLUGINS.md) ·
+[Contributing](CONTRIBUTING.md)
 
-Engineering and architecture teams keep projects as folders on a shared drive. The metadata about
-those projects — client, status, flood zone, planning reference — ends up in a spreadsheet that
-drifts out of sync, and the notes end up in someone's inbox. AEC Notebook keeps both beside the
-folder itself.
+</div>
 
-## Features
+![A project board showing client, stage and contract value, a Zone 3 flood risk flag, linked notes, and a runoff calculator plugin](docs/images/project-board.png)
 
-- **Per-folder schemas.** Each library folder gets its own field definitions — text, number, date,
-  select, multi-select, file, checkbox — grouped into collapsible sections. Drag to reorder,
-  export/import as JSON.
-- **Validation that means something.** Required fields, min/max, max length, allowed options, and
-  cross-field rules (e.g. selecting *Zone 3* requires a risk assessment file before the project
-  counts as complete).
-- **Markdown notes** with `[[wikilinks]]`, `#tags`, backlinks, drag-and-drop attachments, and a
-  reading view.
-- **Tabbed workspace** with split panes, pinned tabs, and session restore.
-- **Full-text search** across project fields and note contents (MiniSearch), plus a `Ctrl/Cmd+P`
-  quick switcher.
-- **Table view** — every project in a folder as rows, schema fields as columns, sortable and
-  filterable, exportable to CSV.
-- **Sandboxed plugins.** Third-party tools run in an isolated iframe with their own CSP and an
-  explicit permission model. A crashing plugin cannot take the app down.
+---
 
-## Install and run
+## The problem it solves
+
+Engineering and architecture teams keep projects as folders on a shared drive. Everything *about*
+those projects — client, stage, flood zone, planning reference, fee — ends up in a spreadsheet
+that drifts out of sync with reality. The site notes end up in someone's inbox.
+
+AEC Notebook puts both next to the folder itself. Your files never move, and nothing is locked in:
+project data is a `project.json` you can read and diff, notes are ordinary `.md` files.
+
+## What it does
+
+**Describe your projects however you like.** Every library folder gets its own field definitions —
+text, number, date, select, multi-select, file, checkbox — grouped into sections you can drag to
+reorder. Export a schema as JSON and reuse it on the next drive.
+
+![The schema editor with a Flood Zone dropdown, its allowed options, a highlight rule, and a live preview](docs/images/schema-editor.png)
+
+**Validation that reflects how you actually work.** Required fields, min/max, allowed options — and
+cross-field rules. Here, selecting *Zone 3* demands a flood risk assessment on file before the
+project counts as complete, and flags the field in red until it has one.
+
+**Site notes that link to each other.** Markdown with `[[wikilinks]]`, `#tags`, backlinks, and
+drag-and-drop attachments. Rename a note and it offers to repoint every link to it. Edit a note in
+another editor and the app notices instead of overwriting you.
+
+![A note in reading view with a heading, task list, tag chips, a wikilink and a backlinks panel](docs/images/notes.png)
+
+**Extend it without forking it.** Plugins are a folder with a manifest and one JavaScript file.
+They run in an isolated sandbox with no network and no filesystem access, and can only touch
+project fields you've granted them. A broken plugin can't take the app down.
+
+![The plugins page listing two sandboxed plugins with permission badges](docs/images/plugins.png)
+
+**Plus:** a tabbed workspace with split panes and session restore · full-text search and a
+`Ctrl/Cmd+P` quick switcher · a spreadsheet-style table view of every project in a folder,
+exportable to CSV · light and dark themes.
+
+## Download
+
+Grab an installer from the [**Releases page**](../../releases/latest):
+
+| Platform | File |
+| --- | --- |
+| Windows | `AEC Notebook Setup <version>.exe` |
+| macOS | `AEC Notebook-<version>.dmg` |
+| Linux | `.AppImage` or `.deb` |
+
+Installers are **not code-signed**, so Windows SmartScreen and macOS Gatekeeper will warn on first
+run. On Windows choose *More info → Run anyway*; on macOS right-click the app and choose *Open*.
+See [SECURITY.md](SECURITY.md).
+
+Prefer to build it yourself? See below.
+
+## Build from source
 
 Requires Node.js 20+.
 
@@ -49,7 +89,8 @@ Run the tests:
 npm test
 ```
 
-Build installers for the current platform (output in `dist/`):
+Build installers for the current platform (output in `dist/`, which is not tracked in git —
+binaries are published through Releases instead):
 
 ```bash
 npm run dist
