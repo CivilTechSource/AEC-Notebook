@@ -13,7 +13,7 @@ test.before(async () => {
 test.after(() => { fs.rmSync(home, { recursive: true, force: true }); delete process.env.PNOTES_HOME; });
 
 async function makeProject(name, notes) {
-  const storage = require('../src/main/storage');
+  const storage = require('../src/main/services/storage');
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-p-'));
   const dir = path.join(root, name);
   await fsp.mkdir(dir, { recursive: true });
@@ -22,7 +22,7 @@ async function makeProject(name, notes) {
 }
 
 test('#tag search matches the tag, not prose containing the word', async () => {
-  const idx = require('../src/main/searchIndex');
+  const idx = require('../src/main/services/searchIndex');
   const p = await makeProject('P', {
     'Tagged.md': 'inspection done #drainage today',
     'Prose.md': 'we discussed drainage at length but tagged nothing',
@@ -38,14 +38,14 @@ test('#tag search matches the tag, not prose containing the word', async () => {
 });
 
 test('#tag search returns nothing for an unused tag', async () => {
-  const idx = require('../src/main/searchIndex');
+  const idx = require('../src/main/services/searchIndex');
   const p = await makeProject('Q', { 'A.md': 'no tags here' });
   idx.invalidate();
   assert.deepStrictEqual(await idx.query('#nope', [p]), []);
 });
 
 test('full-text search finds note bodies and project names', async () => {
-  const idx = require('../src/main/searchIndex');
+  const idx = require('../src/main/services/searchIndex');
   const p = await makeProject('Riverside', { 'Note.md': 'culvert headwall detail' });
   idx.invalidate();
   const hits = await idx.query('culvert', [p]);

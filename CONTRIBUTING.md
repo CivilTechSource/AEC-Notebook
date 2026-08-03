@@ -23,14 +23,22 @@ preprocessing, path handling, search) should have a test; UI wiring generally do
 ## How the code is organised
 
 - `src/main/` — the Electron main process. Everything that touches the filesystem lives here.
+  `main.js` is app lifecycle only; IPC handlers are in `src/main/ipc/`, and the modules they call
+  are in `src/main/services/`.
 - `src/shared/` — pure logic used by both processes. No Node or Electron imports.
 - `renderer/` — the UI. No Node access; every privileged operation goes through `window.api`,
-  which is defined in `src/main/preload.js`.
-- `plugins/` — bundled sample plugins.
+  which is defined in `src/main/preload.js`. Modules are grouped into `core/`, `workspace/`,
+  `editor/`, `views/` and `plugins/`; styles into `renderer/styles/`.
+- `plugins/` — bundled sample plugins (not to be confused with `renderer/plugins/`, which is the
+  host side of the bridge).
 
-If you add an IPC channel, it needs three things: a handler in `main.js`, an entry in
-`preload.js`, and — if it takes a filesystem path — the `guarded()` wrapper so the path is checked
-against the user's registered library folders.
+If you add an IPC channel, it needs three things: a handler in the relevant
+`src/main/ipc/<area>.ipc.js`, an entry in `preload.js`, and — if it takes a filesystem path — the
+`guarded()` wrapper so the path is checked against the user's registered library folders. A new
+area also needs listing in `src/main/ipc/index.js`.
+
+The renderer has no module loader: each file is an IIFE publishing one `window` global, and the
+`<script>` order in `index.html` is the dependency graph.
 
 ## House style
 

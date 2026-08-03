@@ -1,0 +1,106 @@
+/* components.css — reusable pieces used across pages: buttons, cards, form fields, collapsible
+   sections, switches, pills, context menus, modals and toasts.
+   Plugin iframes get a mirrored subset of these (see src/main/services/pluginHost.js). */
+
+/* ---------- context menu ---------- */
+.context-menu { position: fixed; z-index: 200; background: var(--bg-panel); border: 1px solid var(--line-3); border-radius: 8px; padding: 4px; min-width: 170px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.context-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; color: var(--text-2); }
+.context-menu button:hover { background: var(--bg-card); color: var(--text); }
+
+/* ---------- pills (view mode + multiselect) ---------- */
+.pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { display: inline-flex; align-items: center; font-size: 12px; color: var(--text-2); background: var(--bg-card); border: 1px solid var(--line-2); border-radius: 12px; padding: 3px 10px; }
+.pill.pill-danger { color: var(--red); background: var(--red-tint); border-color: var(--red-line); }
+.pill.toggle { cursor: pointer; }
+.pill.toggle:hover { border-color: var(--line-4); }
+.pill.toggle.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+/* ---------- collapsible section ---------- */
+.section { margin-bottom: 10px; }
+.section-head { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 7px; width: 100%; text-align: left; }
+.section-head:hover { background: var(--hover); }
+.section-head .chev { display: flex; color: var(--muted); transition: transform .12s; flex: none; }
+.section.collapsed .chev { transform: rotate(-90deg); }
+.section-head .s-title { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.section-head .s-count { font-size: 11px; color: var(--muted-2); background: var(--bg-card); border-radius: 10px; padding: 1px 7px; }
+.section-head .s-spacer { flex: 1; }
+.section-head .s-done { font-size: 11px; color: var(--muted-2); }
+.section-body { padding: 4px 0 4px 26px; display: flex; flex-direction: column; gap: 6px; }
+.section.collapsed .section-body { display: none; }
+
+/* ---------- generic form / card ---------- */
+.card { background: var(--bg-card); border: 1px solid var(--line-2); border-radius: 11px; padding: 15px; margin-bottom: 12px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn {
+  height: 30px; padding: 0 13px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line-3); border-radius: 6px; font-size: 12px; color: var(--text-2);
+}
+.btn:hover { background: var(--bg-card); border-color: var(--line-4); color: var(--text); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.btn.primary:hover { background: var(--accent-h); }
+.btn.danger:hover { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.ghost { background: transparent; border-color: var(--line-3); }
+.field { display: block; margin-bottom: 14px; }
+.field > .lbl { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+input, select, textarea {
+  width: 100%; background: var(--bg-dark); border: 1px solid var(--line-3); color: var(--text);
+  border-radius: 7px; padding: 8px 11px; font: inherit; font-size: 13px;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; min-height: 80px; }
+.field-error { color: var(--red); font-size: 11.5px; margin-top: 5px; display: flex; align-items: center; gap: 6px; }
+.highlight-red input, .highlight-red select, .highlight-red textarea {
+  border-color: var(--red) !important; background: var(--red-tint);
+}
+
+/* ---------- page header (schema/plugins/storage) ---------- */
+.page-head {
+  flex: none; padding: 18px 28px 16px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+}
+.page-head .crumb { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted-2); margin-bottom: 6px; font-family: var(--mono); }
+.page-head .crumb a { color: var(--muted-2); }
+.page-head .crumb a:hover { color: var(--muted); }
+.page-title { font-size: 20px; font-weight: 600; letter-spacing: -.2px; }
+.page-desc { font-size: 12.5px; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+.head-actions { display: flex; gap: 7px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.page-body { flex: 1; overflow-y: auto; min-height: 0; }
+.section-label { font-size: 11px; font-weight: 600; letter-spacing: .6px; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+
+/* ---------- toggle row + switch ---------- */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-top: 1px solid var(--line); gap: 12px; }
+.toggle-row .tr-title { font-size: 13px; color: var(--text); }
+.toggle-row .tr-sub { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
+.switch {
+  width: 36px; height: 20px; border-radius: 11px; background: var(--switch-track); position: relative; flex: none;
+  transition: background .15s;
+}
+.switch.on { background: var(--accent); }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+.switch.on .knob { left: 18px; }
+
+/* ---------- modal ---------- */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: var(--bg-panel); border: 1px solid var(--line-3); border-radius: 12px; padding: 22px; width: 460px; max-width: 90%; max-height: 86%; overflow: auto; }
+.modal h3 { margin: 0 0 16px; font-size: 16px; }
+
+/* ---------- toasts ---------- */
+#toastHost { position: fixed; right: 16px; bottom: 34px; z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.toast {
+  display: flex; align-items: center; gap: 10px; max-width: 380px;
+  padding: 10px 12px; border-radius: 9px; font-size: 12.5px; color: var(--text);
+  background: var(--bg-card); border: 1px solid var(--line-3); box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  animation: toast-in .15s ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.toast-error { border-color: var(--red-line-2); }
+.toast-error .toast-ico { color: var(--red); }
+.toast-success { border-color: var(--green-line); }
+.toast-success .toast-ico { color: var(--green); }
+.toast-info .toast-ico { color: var(--accent); }
+.toast-ico { flex: none; }
+.toast-msg { flex: 1; min-width: 0; }
+.toast-x { color: var(--muted-2); flex: none; }
+.toast-x:hover { color: var(--text); }
+.toast-action { flex: none; font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 10px; }
+.toast-action:hover { background: var(--accent); color: #fff; }

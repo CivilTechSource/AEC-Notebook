@@ -1,0 +1,87 @@
+/* tokens.css — the design system's single source of truth.
+ *
+ * Colour tokens are mirrored into plugin iframes: src/shared/theme.js lists the names, the
+ * plugin bridge reads the computed values off :root and posts them across, and pluginHost.js
+ * bakes the same list in as a dark fallback. Add a token HERE and to theme.js — nowhere else.
+ *
+ * The light theme (theme-light.css) redefines the neutrals and the interaction surfaces only;
+ * accent and semantic hues are deliberately shared between themes.
+ */
+:root {
+  /* ---- palette (pulled from the Claude Design mockup) ---- */
+  --bg:        #212429;  /* main canvas        */
+  --bg-panel:  #1b1d21;  /* side panels        */
+  --bg-dark:   #16171a;  /* title bar / inputs */
+  --bg-card:   #282c32;  /* cards / fields     */
+  --bg-card-2: #1e2024;
+  --line:      #2a2e34;
+  --line-2:    #2f343b;
+  --line-3:    #34383f;
+  --line-4:    #41464e;
+  --text:      #e6e8ec;
+  --text-2:    #c4c8ce;
+  --text-3:    #b6bcc4;
+  --muted:     #8a9199;
+  --muted-2:   #6a7079;
+  --faint:     #565b63;
+  --accent:    #5b8cff;
+  --accent-h:  #6e9bff;
+  --green:     #5fb87a;
+  --amber:     #e0a23b;
+  --red:       #e5675c;
+  --teal:      #5fb6c4;
+  --purple:    #9b6bd4;
+
+  /* ---- interaction surfaces ----
+     These were hardcoded hexes scattered through the stylesheet, which is why some hover states
+     stayed dark in the light theme. Themed here instead. */
+  --hover:        #23262b;   /* list rows: project items, path headers, section headers */
+  --hover-strong: #282c32;   /* chrome buttons: ribbon, mini-btn */
+  --scroll-thumb:   #3a3f47;
+  --scroll-thumb-h: #4a505a;
+  --switch-track:   #3a3f47;
+  --close-red:      #c42b1c; /* the Windows close-button hover red, same in both themes */
+
+  /* ---- tinted fills ----
+     Translucent washes over the current surface. Shared across themes: they read correctly on
+     light and dark alike because they blend with whatever is underneath. */
+  --accent-tint:        rgba(91,140,255,.12);   /* selected / active rows and cards */
+  --accent-tint-weak:   rgba(91,140,255,.08);   /* drag-over, radio card selected   */
+  --accent-tint-strong: rgba(91,140,255,.28);   /* drop target, hovered            */
+  --red-tint:       rgba(229,103,92,.12);
+  --red-tint-weak:  rgba(229,103,92,.10);
+  --red-line:       rgba(229,103,92,.30);
+  --red-line-2:     rgba(229,103,92,.50);
+  --green-tint:     rgba(95,184,122,.12);
+  --green-line:     rgba(95,184,122,.50);
+  --amber-tint:     rgba(224,162,59,.12);
+  --teal-tint:      rgba(95,182,196,.13);
+  --purple-tint:    rgba(155,107,212,.12);
+
+  /* ---- geometry ---- */
+  --radius:    8px;          /* the original single geometry token; kept, and mirrored to plugins */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 11px;
+
+  /* ---- spacing ----
+     New CSS should use these. Existing rules keep their literals until they're touched for
+     another reason — a mass rewrite would be a large diff with no behavioural payoff. */
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 24px;
+
+  /* ---- typography ----
+     System stacks only: no webfont download, so the app renders identically offline.
+     'JetBrains Mono' is still honoured if the user has it installed locally. */
+  --font-ui: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+}

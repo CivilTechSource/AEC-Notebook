@@ -11,7 +11,7 @@ test.before(async () => {
   process.env.PNOTES_HOME = home;
 });
 test.after(() => {
-  require('../src/main/watcher').closeAll();
+  require('../src/main/services/watcher').closeAll();
   fs.rmSync(home, { recursive: true, force: true });
   delete process.env.PNOTES_HOME;
 });
@@ -25,7 +25,7 @@ function nextChange(watcher, ms = 2500) {
 }
 
 async function setupProject() {
-  const storage = require('../src/main/storage');
+  const storage = require('../src/main/services/storage');
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-wp-'));
   const dir = path.join(root, 'Proj');
   await fsp.mkdir(dir, { recursive: true });
@@ -34,8 +34,8 @@ async function setupProject() {
 }
 
 test('an external note edit is reported', async () => {
-  const watcher = require('../src/main/watcher');
-  const storage = require('../src/main/storage');
+  const watcher = require('../src/main/services/watcher');
+  const storage = require('../src/main/services/storage');
   const proj = await setupProject();
   await watcher.setWatched([proj]);
 
@@ -56,8 +56,8 @@ test('an external note edit is reported', async () => {
 });
 
 test("the app's own writes do not echo back as external changes", async () => {
-  const watcher = require('../src/main/watcher');
-  const storage = require('../src/main/storage');
+  const watcher = require('../src/main/services/watcher');
+  const storage = require('../src/main/services/storage');
   const proj = await setupProject();
   await watcher.setWatched([proj]);
 
@@ -71,7 +71,7 @@ test("the app's own writes do not echo back as external changes", async () => {
 });
 
 test('setWatched replaces the watched set', async () => {
-  const watcher = require('../src/main/watcher');
+  const watcher = require('../src/main/services/watcher');
   const a = await setupProject();
   const b = await setupProject();
 
@@ -83,8 +83,8 @@ test('setWatched replaces the watched set', async () => {
 test('a project set up AFTER the last scan still gets watched', async () => {
   // Regression: watchProject bailed when the meta dir didn't exist yet, so any project whose
   // first data was created after the last rescan was silently never watched.
-  const watcher = require('../src/main/watcher');
-  const storage = require('../src/main/storage');
+  const watcher = require('../src/main/services/watcher');
+  const storage = require('../src/main/services/storage');
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-late-'));
   const proj = path.join(root, 'FreshProject');
   await fsp.mkdir(proj, { recursive: true });
@@ -103,7 +103,7 @@ test('a project set up AFTER the last scan still gets watched', async () => {
 });
 
 test('markSelfWrite suppresses the whole event burst, then expires', () => {
-  const watcher = require('../src/main/watcher');
+  const watcher = require('../src/main/services/watcher');
   const f = path.join(os.tmpdir(), 'x.md');
   watcher.markSelfWrite(f);
   // One write => several fs events; all of them must be suppressed.

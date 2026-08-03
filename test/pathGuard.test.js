@@ -1,13 +1,9 @@
-// The allowlist logic in main.js is inline (it closes over Electron state), so this test covers
-// the containment predicate it relies on. Keep the two in sync if either changes.
+// The containment predicate behind the IPC path allowlist. This used to be a copy of the logic
+// in main.js with a "keep the two in sync" comment; the guard now lives in its own module, so
+// this exercises the real thing.
 const test = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-
-function isInside(parent, child) {
-  const p = path.resolve(parent), c = path.resolve(child);
-  return c === p || c.startsWith(p + path.sep);
-}
+const { isInside } = require('../src/main/pathGuard');
 
 test('a path inside the root is allowed', () => {
   assert.strictEqual(isInside('/lib', '/lib/ProjectA'), true);

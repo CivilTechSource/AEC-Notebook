@@ -6,7 +6,7 @@ const path = require('node:path');
 // md.js is a browser IIFE that publishes onto `window`; load it into a fake global.
 function loadMD() {
   const win = {};
-  const src = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'modules', 'md.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'editor', 'md.js'), 'utf8');
   new Function('window', src).call({ window: win }, win);
   return win.MD;
 }

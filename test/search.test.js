@@ -14,7 +14,7 @@ test.before(async () => {
 test.after(() => { fs.rmSync(home, { recursive: true, force: true }); delete process.env.PNOTES_HOME; });
 
 async function project(name, notes) {
-  const storage = require('../src/main/storage');
+  const storage = require('../src/main/services/storage');
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-proj-'));
   const dir = path.join(root, name);
   await fsp.mkdir(dir, { recursive: true });
@@ -23,7 +23,7 @@ async function project(name, notes) {
 }
 
 test('findBacklinks finds notes linking to a target and skips self', async () => {
-  const search = require('../src/main/search');
+  const search = require('../src/main/services/search');
   const p = await project('P1', {
     'Site Visit.md': 'nothing here',
     'Survey.md': 'see [[Site Visit]] for details',
@@ -35,8 +35,8 @@ test('findBacklinks finds notes linking to a target and skips self', async () =>
 });
 
 test('rewriteWikilinks repoints links and preserves aliases', async () => {
-  const search = require('../src/main/search');
-  const storage = require('../src/main/storage');
+  const search = require('../src/main/services/search');
+  const storage = require('../src/main/services/storage');
   const p = await project('P2', {
     'Survey.md': 'see [[Site Visit]] and [[Site Visit|the visit]] and [[Other]]',
     'Untouched.md': 'only [[Other]] here',
@@ -56,15 +56,15 @@ test('rewriteWikilinks repoints links and preserves aliases', async () => {
 });
 
 test('rewriteWikilinks is a no-op when the name is unchanged', async () => {
-  const search = require('../src/main/search');
+  const search = require('../src/main/services/search');
   const p = await project('P3', { 'A.md': '[[X]]' });
   assert.deepStrictEqual(await search.rewriteWikilinks(p, 'X', 'X'), { files: [], count: 0 });
   assert.deepStrictEqual(await search.rewriteWikilinks(p, 'X', ''), { files: [], count: 0 });
 });
 
 test('rewriteWikilinks matches case-insensitively, like the link resolver', async () => {
-  const search = require('../src/main/search');
-  const storage = require('../src/main/storage');
+  const search = require('../src/main/services/search');
+  const storage = require('../src/main/services/storage');
   const p = await project('P4', { 'A.md': 'go to [[site visit]]' });
   const res = await search.rewriteWikilinks(p, 'Site Visit', 'Site Inspection');
   assert.strictEqual(res.count, 1);

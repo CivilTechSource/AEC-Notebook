@@ -19,7 +19,7 @@ async function library(tree) {
 }
 
 test('scanRoot reports direct subfolders at depth 1', async () => {
-  const scanner = require('../src/main/scanner');
+  const scanner = require('../src/main/services/scanner');
   const root = await library(['Alpha', 'Beta', '.hidden']);
   const found = await scanner.scanRoot(root, 1);
   assert.deepStrictEqual(found.map((f) => f.name).sort(), ['Alpha', 'Beta']);
@@ -27,15 +27,15 @@ test('scanRoot reports direct subfolders at depth 1', async () => {
 });
 
 test('scanRoot descends to the configured depth', async () => {
-  const scanner = require('../src/main/scanner');
+  const scanner = require('../src/main/services/scanner');
   const root = await library(['2024/Alpha', '2024/Beta', '2025/Gamma']);
   const found = await scanner.scanRoot(root, 2);
   assert.deepStrictEqual(found.map((f) => f.name).sort(), ['Alpha', 'Beta', 'Gamma']);
 });
 
 test('scanRootWithData returns project values in one call', async () => {
-  const scanner = require('../src/main/scanner');
-  const storage = require('../src/main/storage');
+  const scanner = require('../src/main/services/scanner');
+  const storage = require('../src/main/services/storage');
   const root = await library(['Alpha', 'Beta']);
   await storage.writeProject(path.join(root, 'Alpha'), { client: 'Acme', zone: 'zone3' });
 
@@ -50,8 +50,8 @@ test('scanRootWithData returns project values in one call', async () => {
 });
 
 test('migrateMoved reconciles a project folder that moved, without rewriting on rescan', async () => {
-  const scanner = require('../src/main/scanner');
-  const storage = require('../src/main/storage');
+  const scanner = require('../src/main/services/scanner');
+  const storage = require('../src/main/services/storage');
   const root = await library(['Old']);
   const oldPath = path.join(root, 'Old');
   await storage.writeProject(oldPath, { client: 'Acme' });
@@ -63,7 +63,7 @@ test('migrateMoved reconciles a project folder that moved, without rewriting on 
   assert.deepStrictEqual(rec.values, { client: 'Acme' });
   assert.strictEqual((await storage.readProject(newPath)).meta.path, newPath);
 
-  // Second call is a no-op (path already reconciled) — this is what keeps rescans cheap.
+  // Second call is a no-op (path already reconciled) â€” this is what keeps rescans cheap.
   const before = (await storage.readProject(newPath)).meta.updatedAt;
   await scanner.migrateMoved(newPath);
   assert.strictEqual((await storage.readProject(newPath)).meta.updatedAt, before);

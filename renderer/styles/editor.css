@@ -1,0 +1,52 @@
+/* editor.css — the note editor, its mode toggle, the rendered reading view, and backlinks. */
+
+/* ---------- NOTE EDITOR (Obsidian-style) ---------- */
+.note-editor { max-width: 780px; margin: 0 auto; padding: 28px 44px 40px; display: flex; flex-direction: column; min-height: 100%; }
+.note-meta { font-size: 11px; color: var(--muted-2); margin-bottom: 14px; }
+.note-title {
+  width: 100%; background: transparent; border: none; padding: 0 0 6px;
+  font-size: 30px; font-weight: 700; color: var(--text); letter-spacing: -.4px;
+}
+.note-title:focus { outline: none; }
+.note-title::placeholder { color: var(--faint); }
+.note-body {
+  flex: 1; width: 100%; background: transparent; border: none; resize: none;
+  font-family: var(--mono); font-size: 14px; line-height: 1.7; color: var(--text-2);
+  padding: 10px 0 0; min-height: 360px;
+}
+.note-body:focus { outline: none; }
+.note-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted-2); }
+
+/* ---------- note topbar + mode toggle ---------- */
+.note-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.seg { display: flex; background: var(--bg-card); border: 1px solid var(--line-2); border-radius: 7px; padding: 2px; }
+.seg-btn { padding: 4px 12px; border-radius: 5px; font-size: 12px; color: var(--muted); }
+.seg-btn.active { background: var(--accent); color: #fff; }
+
+/* ---------- rendered markdown (reading view) ---------- */
+.note-reading { font-size: 14px; line-height: 1.7; color: var(--text-2); }
+.note-reading h1, .note-reading h2, .note-reading h3 { color: var(--text); font-weight: 600; margin: 1.2em 0 .5em; line-height: 1.3; }
+.note-reading h1 { font-size: 24px; } .note-reading h2 { font-size: 19px; } .note-reading h3 { font-size: 16px; }
+.note-reading p { margin: 0 0 12px; }
+.note-reading a { color: var(--accent); text-decoration: none; }
+.note-reading a:hover { text-decoration: underline; }
+.note-reading ul, .note-reading ol { margin: 0 0 12px; padding-left: 22px; }
+.note-reading li { margin: 3px 0; }
+.note-reading code { font-family: var(--mono); font-size: 12.5px; background: var(--bg-card); border-radius: 4px; padding: 1px 5px; color: var(--teal); }
+.note-reading pre { background: var(--bg-dark); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+.note-reading pre code { background: none; padding: 0; color: var(--text-2); }
+.note-reading blockquote { border-left: 3px solid var(--line-4); margin: 0 0 12px; padding: 2px 14px; color: var(--muted); }
+.note-reading table { border-collapse: collapse; margin: 0 0 12px; }
+.note-reading th, .note-reading td { border: 1px solid var(--line); padding: 6px 10px; font-size: 13px; }
+.note-reading hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
+.note-reading img { max-width: 100%; border-radius: 8px; }
+.wikilink { color: var(--accent); cursor: pointer; border-bottom: 1px dashed var(--accent); }
+.tag { color: var(--purple); background: var(--purple-tint); border-radius: 5px; padding: 1px 6px; font-size: 12px; }
+
+/* ---------- backlinks ---------- */
+.note-backlinks { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 14px; }
+.note-backlinks .bl-head { font-size: 11px; font-weight: 600; letter-spacing: .5px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+.note-backlinks .bl-row { padding: 8px 10px; border-radius: 7px; cursor: default; }
+.note-backlinks .bl-row:hover { background: var(--bg-card); }
+.note-backlinks .bl-name { display: block; font-size: 13px; color: var(--accent); }
+.note-backlinks .bl-snip { display: block; font-size: 11.5px; color: var(--muted-2); margin-top: 2px; }

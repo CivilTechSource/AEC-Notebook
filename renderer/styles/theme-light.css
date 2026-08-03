@@ -1,0 +1,28 @@
+/* theme-light.css — the light theme.
+ *
+ * Only neutrals and interaction surfaces are redefined; accents and the semantic hues
+ * (green/amber/red/teal/purple) and their tints are deliberately shared with dark, because the
+ * tints are translucent and blend with whatever surface is underneath.
+ *
+ * Applied by app.js setting :root[data-theme="light"], persisted in settings.json, and
+ * broadcast to plugin iframes by the plugin bridge.
+ */
+:root[data-theme="light"] {
+  --bg: #f6f7f9; --bg-panel: #eceef1; --bg-dark: #e3e6ea; --bg-card: #ffffff; --bg-card-2: #f1f3f5;
+  --line: #dadee3; --line-2: #d0d5db; --line-3: #c3c9d0; --line-4: #aab2bb;
+  --text: #1b2530; --text-2: #2f3a45; --text-3: #44505b; --muted: #5d6772; --muted-2: #828b95; --faint: #a3abb4;
+
+  /* Hover surfaces used to be hardcoded per-selector overrides here. As tokens they cover every
+     hovered row and chrome button at once — including .mini-btn, which the old override list
+     missed and which therefore flashed dark grey on the light theme. */
+  --hover:        #e1e4e8;
+  --hover-strong: #e1e4e8;
+}
+
+/* The title bar sits on its own dark surface in both themes, so its hover states are explicit.
+   .tb-close must be re-asserted: the .tb-btn:hover rule below is more specific than the base
+   .tb-close:hover, so without this the close button loses its red. */
+:root[data-theme="light"] #titlebar { border-bottom-color: #cfd4da; }
+:root[data-theme="light"] .tb-btn:hover { background: rgba(0,0,0,.07); }
+:root[data-theme="light"] .tb-btn:active { background: rgba(0,0,0,.12); }
+:root[data-theme="light"] .tb-close:hover { background: var(--close-red); color: #fff; }

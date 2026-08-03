@@ -158,14 +158,21 @@ troubleshooting. `plugins/storm-runoff/` is a complete worked example.
 
 ```
 src/main/       Electron main process — persistence, scanning, search index, plugin loading
-  main.js         window, menu, IPC handlers, navigation guards
-  storage.js      project.json / notes / attachments / config, atomic writes
-  scanner.js      library folder scanning + moved-folder reconciliation
-  searchIndex.js  MiniSearch full-text index
-  plugins.js      plugin discovery + manifest validation
+  main.js         app lifecycle, window, navigation guards, pnplugin:// scheme
+  menu.js         the native application menu
+  pathGuard.js    the allowlist every project-scoped IPC call is checked against
+  writeTracker.js holds app quit open until pending writes land
   preload.js      the entire renderer-facing API surface
-src/shared/     Pure logic usable from either process (data_validation.js)
+  ipc/            one module per area (notes, project, config, search, plugins, …)
+  services/       storage, scanner, search, searchIndex, watcher, plugins, pluginHost
+src/shared/     Pure logic usable from either process (data_validation.js, theme.js)
 renderer/       UI — no Node access; everything goes through window.api
+  styles/         design tokens + per-area stylesheets
+  core/           store, toast, modal, undo, fsWatch, icons, events
+  workspace/      tab groups, splitting, session layout
+  editor/         note editor, markdown rendering, attachments
+  views/          project board, schema editor, table, storage, quick switcher
+  plugins/        host side of the sandboxed plugin bridge
 plugins/        Bundled sample plugins
 test/           node:test unit tests
 ```

@@ -6,7 +6,7 @@ Please report security issues privately via GitHub's ["Report a vulnerability"][
 rather than opening a public issue. Include reproduction steps and the app version. We aim to
 acknowledge within a week.
 
-[advisories]: https://github.com/OWNER/aec-notebook/security/advisories/new
+[advisories]: https://github.com/CivilTechSource/AEC-Notebook/security/advisories/new
 
 ## Supported versions
 

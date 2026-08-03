@@ -2,6 +2,7 @@
 // Serving from a real (custom) scheme gives the page its OWN CSP (set by the protocol handler),
 // so the sandboxed plugin's inline scripts run without inheriting the app's strict script-src.
 const plugins = require('./plugins');
+const theme = require('../../shared/theme');
 
 // The PluginAPI SDK injected before the plugin's own code (talks to the host via postMessage).
 // On init it also applies the app's theme variables so the plugin matches the app (incl. light/dark).
@@ -28,15 +29,10 @@ const SDK = `(function(){
   };
 })();`;
 
-// Mirrors the app's tokens + component styles so plugins look native. The :root values are
-// dark-theme fallbacks; the host overrides them (incl. light theme) via the init 'theme' payload.
-const BASE_CSS = `:root{
-  --bg:#212429;--bg-panel:#1b1d21;--bg-dark:#16171a;--bg-card:#282c32;--bg-card-2:#1e2024;
-  --line:#2a2e34;--line-2:#2f343b;--line-3:#34383f;--line-4:#41464e;
-  --text:#e6e8ec;--text-2:#c4c8ce;--text-3:#b6bcc4;--muted:#8a9199;--muted-2:#6a7079;--faint:#565b63;
-  --accent:#5b8cff;--accent-h:#6e9bff;--green:#5fb87a;--amber:#e0a23b;--red:#e5675c;--teal:#5fb6c4;--purple:#9b6bd4;
-  --radius:8px;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
-}
+// Mirrors the app's tokens + component styles so plugins look native. The :root values come from
+// src/shared/theme.js (the single source of truth, checked against tokens.css by a test) and are
+// only a fallback — the host overrides them, incl. light theme, via the init 'theme' payload.
+const BASE_CSS = `${theme.darkRootCss()}
 *{box-sizing:border-box;}
 body{margin:0;padding:2px 2px 6px;background:transparent;color:var(--text);
   font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;}
@@ -53,6 +49,7 @@ label,.lbl{color:var(--muted);font-size:12px;}
 .muted{color:var(--muted);} .mono{font-family:var(--mono);}
 a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}
 ::-webkit-scrollbar{width:9px;height:9px;} ::-webkit-scrollbar-thumb{background:#3a3f47;border-radius:6px;}`;
+
 
 function escScript(s) { return String(s).replace(/<\/(script)/gi, '<\\/$1'); }
 

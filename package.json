@@ -22,12 +22,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/aec-notebook.git"
+    "url": "git+https://github.com/CivilTechSource/AEC-Notebook.git"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/aec-notebook/issues"
+    "url": "https://github.com/CivilTechSource/AEC-Notebook/issues"
   },
-  "homepage": "https://github.com/OWNER/aec-notebook#readme",
+  "homepage": "https://github.com/CivilTechSource/AEC-Notebook#readme",
   "engines": {
     "node": ">=20"
   },

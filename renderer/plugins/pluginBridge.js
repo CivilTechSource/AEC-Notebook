@@ -7,8 +7,9 @@
 (function () {
   const registry = [];   // { win, iframe, manifest, project, schemaFields }
 
-  const THEME_VARS = ['--bg', '--bg-panel', '--bg-dark', '--bg-card', '--bg-card-2', '--line', '--line-2', '--line-3', '--line-4',
-    '--text', '--text-2', '--text-3', '--muted', '--muted-2', '--faint', '--accent', '--accent-h', '--green', '--amber', '--red', '--teal', '--purple', '--radius', '--mono'];
+  // Which tokens cross into plugin frames is decided in src/shared/theme.js — see the note there
+  // about this list having previously existed in three places.
+  const THEME_VARS = window.Theme.MIRRORED;
   function themeVars() {
     const cs = getComputedStyle(document.documentElement);
     const o = {};

@@ -1,0 +1,36 @@
+// project.ipc.js — project.json reads/writes, library scanning, and data migration.
+// Storage mode/location is resolved in the main process from settings.json.
+const { ipcMain } = require('electron');
+const storage = require('../services/storage');
+const scanner = require('../services/scanner');
+const searchIndex = require('../services/searchIndex');
+const watcher = require('../services/watcher');
+const { guarded, assertAllowed } = require('../pathGuard');
+const { trackedWrite } = require('../writeTracker');
+
+function register() {
+  ipcMain.handle('project:read', guarded((_e, { path: p }) => storage.readProject(p)));
+  ipcMain.handle('project:write', guarded((_e, { path: p, data }) => {
+    searchIndex.invalidate();
+    return trackedWrite(p, storage.writeProject(p, data));
+  }));
+
+  // Scanning + migration (roots go through the same allowlist as project paths)
+  ipcMain.handle('scan:root', async (_e, { root, depth }) => { await assertAllowed(root); return scanner.scanRoot(root, depth); });
+  // Batched: scan + reconcile + read every project in one round-trip (see scanner.scanRootWithData).
+  ipcMain.handle('scan:rootWithData', async (_e, { root, depth }) => { await assertAllowed(root); return scanner.scanRootWithData(root, depth); });
+  ipcMain.handle('scan:migrate', guarded((_e, { path: p }) => scanner.migrateMoved(p)));
+
+  // After a rescan the renderer tells us the full project set so we can watch exactly those.
+  ipcMain.handle('watch:set', async (_e, { paths }) => {
+    for (const p of paths || []) await assertAllowed(p);
+    return watcher.setWatched(paths);
+  });
+
+  ipcMain.handle('data:migrateInto', async (_e, { paths }) => {
+    for (const p of paths || []) await assertAllowed(p);
+    return storage.migrateAllInto(paths);
+  });
+}
+
+module.exports = { register };

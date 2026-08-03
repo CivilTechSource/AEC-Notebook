@@ -5,7 +5,7 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 
-const plugins = require('../src/main/plugins');
+const plugins = require('../src/main/services/plugins');
 
 test('safeEntry accepts a plain .js filename in the plugin dir', () => {
   const dir = path.resolve('/tmp/p');

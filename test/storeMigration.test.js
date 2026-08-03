@@ -8,14 +8,14 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const STORE_SRC = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'modules', 'store.js'), 'utf8');
+const STORE_SRC = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'core', 'store.js'), 'utf8');
 const VALIDATION_SRC = fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'data_validation.js'), 'utf8');
 
 async function bootStore(configs) {
   const home = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-store-'));
   process.env.PNOTES_HOME = home;
-  delete require.cache[require.resolve('../src/main/storage')];
-  const storage = require('../src/main/storage');
+  delete require.cache[require.resolve('../src/main/services/storage')];
+  const storage = require('../src/main/services/storage');
   for (const [name, data] of Object.entries(configs)) await storage.writeConfig(name, data);
 
   const win = {
@@ -67,7 +67,7 @@ test('legacy byPath schemas migrate onto stable ids without losing fields', asyn
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-test('migration is idempotent — a second load changes nothing', async () => {
+test('migration is idempotent â€” a second load changes nothing', async () => {
   const lib = path.join(os.tmpdir(), 'LibC');
   const { Store, storage, home } = await bootStore({
     'library.json': { paths: [{ path: lib, collapsed: false, depth: 1 }] },
@@ -95,7 +95,7 @@ test('a renamed library folder keeps its schema when relinked', async () => {
   await Store.loadConfig();
 
   assert.strictEqual(await Store.relinkLibraryPath(oldPath, newPath), true);
-  // The schema followed the entry to its new path — this is the whole point of stable ids.
+  // The schema followed the entry to its new path â€” this is the whole point of stable ids.
   assert.strictEqual(Store.schemaForPath(newPath).sections[0].fields[0].key, 'client');
   assert.strictEqual(Store.schemaForPath(newPath).version, 7);
 

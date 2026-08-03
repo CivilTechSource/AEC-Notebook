@@ -6,7 +6,15 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' data:; frame-src 'self' pnplugin:; connect-src 'self';" />
   <title>AEC Notebook</title>
-  <link rel="stylesheet" href="style.css" />
+  <!-- Stylesheets cascade in this order: tokens define the variables everything else reads,
+       then generic layers, then the light-theme overrides last. -->
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/shell.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/editor.css" />
+  <link rel="stylesheet" href="styles/views.css" />
+  <link rel="stylesheet" href="styles/theme-light.css" />
 </head>
 <body>
   <!-- TITLE BAR — the window is frameless, so this is the drag handle and the window controls.
@@ -98,26 +106,32 @@
     </div>
   </footer>
 
+  <!-- Each module is an IIFE that hangs one global off window; there is no module loader, so
+       THIS ORDER IS THE DEPENDENCY GRAPH. A module must appear after everything it reads at
+       load time. The folders group by role only (core / workspace / editor / views / plugins)
+       and carry no ordering meaning. -->
   <script src="vendor/marked.umd.js"></script>
   <script src="vendor/purify.min.js"></script>
   <script src="../src/shared/data_validation.js"></script>
-  <script src="modules/icons.js"></script>
-  <script src="modules/md.js"></script>
-  <script src="modules/attachments.js"></script>
-  <script src="modules/toast.js"></script>
-  <script src="modules/undo.js"></script>
-  <script src="modules/modal.js"></script>
-  <script src="modules/store.js"></script>
-  <script src="modules/fsWatch.js"></script>
-  <script src="modules/tabs.js"></script>
-  <script src="modules/schemaEditor.js"></script>
-  <script src="modules/projectBoard.js"></script>
-  <script src="modules/notes.js"></script>
-  <script src="modules/pluginBridge.js"></script>
-  <script src="modules/pluginsView.js"></script>
-  <script src="modules/storageView.js"></script>
-  <script src="modules/tableView.js"></script>
-  <script src="modules/quickSwitcher.js"></script>
+  <script src="../src/shared/theme.js"></script>
+  <script src="core/icons.js"></script>
+  <script src="core/events.js"></script>
+  <script src="editor/md.js"></script>
+  <script src="editor/attachments.js"></script>
+  <script src="core/toast.js"></script>
+  <script src="core/undo.js"></script>
+  <script src="core/modal.js"></script>
+  <script src="core/store.js"></script>
+  <script src="core/fsWatch.js"></script>
+  <script src="workspace/tabs.js"></script>
+  <script src="views/schemaEditor.js"></script>
+  <script src="views/projectBoard.js"></script>
+  <script src="editor/notes.js"></script>
+  <script src="plugins/pluginBridge.js"></script>
+  <script src="plugins/pluginsView.js"></script>
+  <script src="views/storageView.js"></script>
+  <script src="views/tableView.js"></script>
+  <script src="views/quickSwitcher.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

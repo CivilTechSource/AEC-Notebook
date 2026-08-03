@@ -1,0 +1,219 @@
+/* shell.css — the application frame: title bar, ribbon, pages, project panel,
+   the tabbed workspace, and the status bar. */
+
+/* ---------- TITLE BAR ----------
+   The window is frameless, so this bar IS the title bar: it provides the drag region, the
+   application menu (☰) and the window controls. Interactive children must opt out of dragging
+   or the OS swallows their clicks. */
+#titlebar {
+  height: 32px; flex: none; background: var(--bg-dark);
+  display: flex; align-items: center; padding-left: 6px;
+  border-bottom: 1px solid #000; -webkit-app-region: drag;
+}
+.tb-spacer { flex: 1; }
+.tb-brand { display: flex; align-items: center; gap: 9px; }
+
+.tb-btn {
+  -webkit-app-region: no-drag;            /* clickable inside the drag region */
+  height: 32px; min-width: 42px; padding: 0 6px; border: none; background: transparent;
+  color: var(--text-3); font-size: 10px; font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.tb-btn:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.tb-btn:active { background: rgba(255,255,255,.14); }
+.tb-close:hover { background: var(--close-red); color: #fff; }
+.tb-menu { min-width: 32px; font-size: 13px; font-family: inherit; margin-right: 2px; border-radius: 4px; }
+.tb-controls { display: flex; align-items: center; height: 100%; }
+
+/* macOS keeps its traffic lights (titleBarStyle: hiddenInset), so leave room for them and
+   hide our own controls — the OS already provides them. */
+:root[data-platform="darwin"] #titlebar { padding-left: 78px; }
+:root[data-platform="darwin"] .tb-controls { display: none; }
+.tb-logo {
+  width: 15px; height: 15px; border-radius: 3px; color: #fff;
+  background: linear-gradient(135deg, #5b8cff, #3a6bea);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700;
+}
+.tb-title { font-size: 12px; color: var(--text-2); letter-spacing: .2px; }
+.tb-active { font-size: 12px; color: var(--faint); }
+.tb-active:not(:empty)::before { content: '— '; }
+
+/* (The second, decorative menu row was removed — the native application menu is the only menu,
+   reachable from the ☰ button in the title bar or by pressing Alt.) */
+
+/* ---------- SHELL ---------- */
+#shell { flex: 1; display: flex; min-height: 0; }
+
+/* ---------- RIBBON ---------- */
+#ribbon {
+  width: 50px; flex: none; background: var(--bg-dark);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0; gap: 4px; border-right: 1px solid var(--line);
+}
+.ribbon-btn {
+  width: 36px; height: 36px; border-radius: 7px; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.ribbon-btn svg { display: block; }
+.ribbon-btn:hover { background: var(--hover-strong); color: var(--text); }
+.ribbon-btn.active { background: var(--hover-strong); color: var(--text); }
+.ribbon-btn.active::before {
+  content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 3px; background: var(--accent);
+}
+.ribbon-spacer { flex: 1; }
+.ribbon-avatar {
+  width: 28px; height: 28px; border-radius: 50%; margin-top: 4px;
+  background: linear-gradient(135deg, #6a8b6f, #4a6b56);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: #fff;
+}
+#themeToggle { font-size: 16px; }
+
+/* ---------- PAGES ---------- */
+.page { flex: 1; display: flex; min-width: 0; }
+.page[hidden] { display: none; }
+.fullpage { flex-direction: column; background: var(--bg); }
+
+/* ---------- PROJECT PANEL ---------- */
+#projectpanel {
+  width: 248px; flex: none; background: var(--bg-panel);
+  border-right: 1px solid var(--line); display: flex; flex-direction: column;
+}
+.panel-header {
+  height: 38px; flex: none; display: flex; align-items: center;
+  padding: 0 12px; border-bottom: 1px solid var(--line);
+  font-size: 11px; font-weight: 600; letter-spacing: .6px;
+  color: var(--muted); text-transform: uppercase;
+}
+.panel-search { padding: 8px; flex: none; }
+.panel-search {
+  display: flex; align-items: center;
+}
+.panel-search { gap: 0; }
+.panel-search .search-ico {
+  position: absolute; margin-left: 9px; color: var(--muted-2); pointer-events: none; font-size: 14px;
+}
+.panel-search input {
+  height: 30px; width: 100%; padding: 0 9px 0 28px; color: var(--text);
+  background: var(--bg-dark); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px;
+}
+.panel-search input::placeholder { color: var(--faint); }
+.panel-search input:focus { outline: none; border-color: var(--accent); }
+
+#projectGroups { flex: 1; overflow-y: auto; padding: 2px 6px 8px; }
+
+/* collapsible per-path group */
+.path-group { margin-bottom: 4px; }
+.path-header {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 7px 8px; border-radius: 6px; color: var(--muted); text-align: left;
+}
+.path-header:hover { background: var(--hover); color: var(--text-2); }
+.path-header .chev { color: var(--muted-2); transition: transform .12s; flex: none; display: flex; }
+.path-group.collapsed .chev { transform: rotate(-90deg); }
+.path-header .folder-ico { color: var(--amber); flex: none; display: flex; }
+.path-header .path-name {
+  flex: 1; min-width: 0; font-size: 11px; font-weight: 600; letter-spacing: .4px;
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-3);
+}
+.path-header .path-count {
+  flex: none; font-size: 10.5px; color: var(--muted-2);
+  background: var(--bg-dark); border: 1px solid var(--line); border-radius: 9px; padding: 1px 7px;
+}
+.path-group.collapsed .path-body { display: none; }
+.path-body { padding: 2px 0 2px 6px; }
+
+.project-item {
+  display: flex; align-items: center; gap: 9px; padding: 7px 9px;
+  border-radius: 6px; margin-bottom: 1px; width: 100%; text-align: left;
+}
+.project-item:hover { background: var(--hover); }
+.project-item.active { background: var(--accent-tint); }
+.project-item .pdot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+/* Name over status. These are spans, so they must be made block-level explicitly — as inline
+   elements they ran together ("Harbour Wall Surveynot set up") and ellipsis truncation was
+   silently ignored. */
+.project-item .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.project-item .pname {
+  display: block; font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-item.active .pname { color: var(--text); font-weight: 600; }
+.project-item .pmeta {
+  display: block; font-size: 10.5px; color: var(--muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.empty-hint { color: var(--muted-2); padding: 22px 16px; text-align: center; line-height: 1.7; font-size: 12px; }
+
+.panel-footer {
+  flex: none; border-top: 1px solid var(--line); padding: 8px 10px 8px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.foot-status { font-size: 11px; color: var(--muted-2); display: flex; align-items: center; gap: 6px; min-width: 0; }
+.foot-status .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.dot.ok { background: var(--green); }
+.mini-btn {
+  height: 24px; padding: 0 9px; display: flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line-3); border-radius: 6px; font-size: 11px; color: var(--text-2); flex: none;
+}
+.mini-btn:hover { background: var(--hover-strong); border-color: var(--line-4); color: var(--text); }
+
+/* ---------- WORKSPACE MAIN ---------- */
+#panel-resizer { width: 5px; flex: none; cursor: col-resize; background: transparent; }
+#panel-resizer:hover { background: var(--accent); }
+#workspace-main { flex: 1; display: flex; min-width: 0; position: relative; }
+#tabgroups { flex: 1; display: flex; min-width: 0; }
+
+.tabgroup { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; border-left: 1px solid var(--line); }
+.tabgroup:first-child { border-left: none; }
+.group-resizer { width: 5px; flex: none; cursor: col-resize; background: var(--line); }
+.group-resizer:hover { background: var(--accent); }
+
+.tabstrip {
+  height: 38px; flex: none; background: var(--bg-dark);
+  display: flex; align-items: stretch; border-bottom: 1px solid var(--line); overflow-x: auto;
+}
+.tabstrip.drop { box-shadow: inset 0 -2px 0 var(--accent); }
+.tab {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  min-width: 130px; max-width: 230px; border-right: 1px solid var(--line);
+  background: var(--bg-dark); color: var(--muted); border-top: 2px solid transparent;
+}
+.tab:hover { background: var(--bg-panel); }
+.tab.active { background: var(--bg); color: var(--text); border-top-color: var(--accent); }
+.tab.dragging { opacity: .4; }
+.tab .pin { display: none; flex: none; font-size: 10px; }
+.tab.pinned .pin { display: inline; }
+.tab.pinned .close { display: none; }
+.tab .tab-ico { display: flex; flex: none; color: var(--muted-2); }
+.tab.active .tab-ico { color: var(--accent); }
+.tab .ttl { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab .close { width: 18px; height: 18px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex: none; color: var(--muted-2); font-size: 12px; }
+.tab .close:hover { background: var(--line-3); color: var(--text); }
+.tabpanes { flex: 1; overflow: auto; min-height: 0; background: var(--bg); position: relative; }
+.pane[hidden] { display: none; }
+
+.split-zone {
+  position: absolute; top: 38px; right: 0; bottom: 0; width: 90px; z-index: 30;
+  background: var(--accent-tint); border-left: 2px dashed var(--accent);
+  display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 12px; pointer-events: all;
+}
+.split-zone.over { background: var(--accent-tint-strong); }
+
+#welcomePane { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; align-items: center; justify-content: center; }
+#welcomePane[hidden] { display: none; }
+.welcome-card { max-width: 480px; text-align: center; padding: 30px; }
+.welcome-card h2 { font-size: 20px; font-weight: 600; margin: 0 0 10px; }
+.welcome-card p { color: var(--muted); line-height: 1.6; margin: 0; }
+
+/* ---------- STATUS BAR ---------- */
+#statusbar {
+  height: 24px; flex: none; background: var(--accent); color: #eaf0ff;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px;
+}
+.status-left, .status-right { display: flex; align-items: center; gap: 16px; white-space: nowrap; }
+.si { display: flex; align-items: center; gap: 6px; }
+.si-dot { width: 7px; height: 7px; border-radius: 50%; border: 1.2px solid #fff; }
