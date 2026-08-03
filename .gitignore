@@ -10,10 +10,8 @@ build/
 builder-debug.yml
 builder-effective-config.yaml
 
-# Design handoff artefacts and internal docs (not source, not for publication)
+# Archives
 *.zip
-_design_preview/
-Project Brief.md
 
 # OS / editor cruft
 .DS_Store
