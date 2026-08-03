@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles/components.css" />
   <link rel="stylesheet" href="styles/editor.css" />
   <link rel="stylesheet" href="styles/views.css" />
+  <link rel="stylesheet" href="vendor/katex/katex.min.css" />
   <link rel="stylesheet" href="styles/theme-light.css" />
 </head>
 <body>
@@ -126,6 +127,10 @@
        and carry no ordering meaning. -->
   <script src="vendor/marked.umd.js"></script>
   <script src="vendor/purify.min.js"></script>
+  <script src="vendor/prism.js"></script>
+  <script src="vendor/katex/katex.min.js"></script>
+  <!-- mermaid is deliberately absent: it is 3.5 MB and editor/markdown/mermaid.js injects it on
+       first sight of a ```mermaid block, so notes without diagrams never pay for it. -->
   <script src="../src/shared/data_validation.js"></script>
   <script src="../src/shared/theme.js"></script>
   <script src="core/icons.js"></script>
@@ -142,6 +147,14 @@
   <script src="workspace/sidebar.js"></script>
   <script src="views/schemaEditor.js"></script>
   <script src="views/projectBoard.js"></script>
+  <!-- Markdown extensions self-register with MD; load order here is their run order. -->
+  <script src="editor/markdown/callouts.js"></script>
+  <script src="editor/markdown/footnotes.js"></script>
+  <script src="editor/markdown/embeds.js"></script>
+  <script src="editor/markdown/mermaid.js"></script>
+  <script src="editor/markdown/highlight.js"></script>
+  <script src="editor/markdown/math.js"></script>
+  <script src="editor/markdown/checkboxes.js"></script>
   <script src="editor/wikilinkSuggest.js"></script>
   <script src="editor/hoverPreview.js"></script>
   <script src="editor/notes.js"></script>

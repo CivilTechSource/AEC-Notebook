@@ -41,7 +41,115 @@
 .note-reading hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 .note-reading img { max-width: 100%; border-radius: 8px; }
 .wikilink { color: var(--accent); cursor: pointer; border-bottom: 1px dashed var(--accent); }
-.tag { color: var(--purple); background: var(--purple-tint); border-radius: 5px; padding: 1px 6px; font-size: 12px; }
+/* Scoped by [data-tag] on purpose: Prism emits <span class="token tag"> for markup tags, which
+   would otherwise pick up this purple pill inside every highlighted HTML sample. */
+.tag[data-tag] { color: var(--purple); background: var(--purple-tint); border-radius: 5px; padding: 1px 6px; font-size: 12px; }
 
 /* (Backlinks used to render as a strip under the note body. They now live in the right
    sidebar — see renderer/panels/backlinks.js and the .rb-* rules in shell.css.) */
+
+/* ---------- callouts ---------- */
+.callout {
+  margin: 0 0 var(--sp-4); border-radius: var(--radius-md);
+  border: 1px solid var(--cal-line); border-left: 3px solid var(--cal-accent);
+  background: var(--cal-fill); overflow: hidden;
+  /* Defaults, overridden per type below. */
+  --cal-accent: var(--accent); --cal-fill: var(--accent-tint-weak); --cal-line: var(--accent-tint);
+}
+.callout-note    { --cal-accent: var(--accent); --cal-fill: var(--accent-tint-weak); --cal-line: var(--accent-tint); }
+.callout-tip     { --cal-accent: var(--teal);   --cal-fill: var(--teal-tint);   --cal-line: var(--teal-tint); }
+.callout-success { --cal-accent: var(--green);  --cal-fill: var(--green-tint);  --cal-line: var(--green-line); }
+.callout-warn    { --cal-accent: var(--amber);  --cal-fill: var(--amber-tint);  --cal-line: var(--amber-tint); }
+.callout-danger  { --cal-accent: var(--red);    --cal-fill: var(--red-tint-weak); --cal-line: var(--red-line); }
+.callout-example { --cal-accent: var(--purple); --cal-fill: var(--purple-tint); --cal-line: var(--purple-tint); }
+.callout-quote   { --cal-accent: var(--line-4); --cal-fill: transparent;        --cal-line: var(--line-2); }
+
+.callout-head {
+  display: flex; align-items: center; gap: var(--sp-2);
+  width: 100%; text-align: left; padding: var(--sp-3) var(--sp-4);
+  font-size: 13px; font-weight: 600; color: var(--cal-accent);
+}
+button.callout-head { cursor: pointer; }
+button.callout-head:hover { background: rgba(127,127,127,.06); }
+.callout-chev { display: flex; color: var(--cal-accent); transition: transform .12s; }
+.callout.collapsed .callout-chev { transform: rotate(-90deg); }
+.callout.collapsed .callout-body { display: none; }
+.callout-body { padding: 0 var(--sp-4) var(--sp-2); }
+.callout-body > :first-child { margin-top: 0; }
+.callout-body > :last-child { margin-bottom: 0; }
+
+/* ---------- task checkboxes ---------- */
+.note-reading input[type="checkbox"] {
+  width: auto; margin: 0 var(--sp-2) 0 0; vertical-align: -1px;
+  accent-color: var(--accent); cursor: pointer;
+}
+.note-reading li:has(> input[type="checkbox"]) { list-style: none; margin-left: -18px; }
+
+/* ---------- footnotes ---------- */
+.fn-ref { font-size: 10px; }
+.fn-ref a { color: var(--accent); text-decoration: none; padding: 0 1px; }
+.footnotes {
+  margin-top: var(--sp-6); padding-top: var(--sp-4);
+  border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted);
+}
+.footnotes ol { padding-left: 22px; margin: 0; }
+.fn-item { margin: var(--sp-1) 0; }
+.fn-back { color: var(--muted-2); text-decoration: none; margin-left: 4px; }
+.fn-back:hover { color: var(--accent); }
+/* Brief highlight so a jump between reference and note is visible. */
+.fn-flash { background: var(--accent-tint); border-radius: var(--radius-sm); transition: background .4s; }
+
+/* ---------- embedded notes ---------- */
+.md-embed {
+  margin: 0 0 var(--sp-4); border: 1px solid var(--line-2);
+  border-left: 3px solid var(--line-4); border-radius: var(--radius-md);
+  background: var(--bg-card-2);
+}
+.md-embed-warn, .md-embed-error {
+  padding: var(--sp-3) var(--sp-4); font-size: 12.5px;
+  border-left-color: var(--amber); color: var(--muted);
+}
+.md-embed-error { border-left-color: var(--red); color: var(--red); }
+.md-embed-head {
+  display: block; width: 100%; text-align: left;
+  padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line);
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--muted); cursor: pointer;
+}
+.md-embed-head:hover { color: var(--accent); }
+.md-embed-body { padding: var(--sp-3) var(--sp-4); }
+.md-embed-body > :first-child { margin-top: 0; }
+.md-embed-body > :last-child { margin-bottom: 0; }
+
+/* ---------- syntax highlighting (Prism) ----------
+   Written against the app's own tokens rather than shipping a Prism theme, so highlighted code
+   follows the light/dark switch like everything else. */
+.note-reading pre.has-highlight code { color: var(--text-2); }
+.token.comment, .token.prolog, .token.doctype, .token.cdata { color: var(--muted-2); font-style: italic; }
+.token.punctuation { color: var(--muted); }
+.token.property, .token.tag, .token.constant, .token.symbol, .token.deleted { color: var(--red); }
+.token.boolean, .token.number { color: var(--amber); }
+.token.selector, .token.attr-name, .token.string, .token.char, .token.builtin, .token.inserted { color: var(--green); }
+.token.operator, .token.entity, .token.url { color: var(--teal); }
+.token.atrule, .token.attr-value, .token.keyword { color: var(--purple); }
+.token.function, .token.class-name { color: var(--accent); }
+.token.regex, .token.important, .token.variable { color: var(--amber); }
+.token.important, .token.bold { font-weight: 600; }
+.token.italic { font-style: italic; }
+
+/* ---------- maths (KaTeX) ---------- */
+.math-display { margin: var(--sp-4) 0; overflow-x: auto; overflow-y: hidden; }
+.math-inline { display: inline-block; }
+.katex { font-size: 1.05em; }
+.katex-error { color: var(--red); }
+
+/* ---------- mermaid diagrams ---------- */
+.mermaid-figure { margin: var(--sp-4) 0; text-align: center; overflow-x: auto; }
+.mermaid-figure svg { max-width: 100%; height: auto; }
+.mermaid-error {
+  margin: var(--sp-4) 0 0; padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--red-line); border-radius: var(--radius-md);
+  background: var(--red-tint-weak); color: var(--red); font-size: 12.5px;
+}
+/* Keep the source visible under the error so the mistake can be found. */
+.note-reading pre.mermaid-source { margin-top: var(--sp-2); opacity: .75; }

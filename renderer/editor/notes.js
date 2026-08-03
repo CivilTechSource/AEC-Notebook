@@ -126,6 +126,21 @@
         saveBody.flush?.();
         try { await window.api.writeNote(project.path, state.name, bodyEl.value); } catch { /* toast already */ }
         readEl.innerHTML = window.MD.render(bodyEl.value);
+        // Callouts, code highlighting, maths, diagrams, embeds and live checkboxes. getBody/
+        // setBody are what let a ticked checkbox write back into this buffer.
+        await window.MD.enhance(readEl, {
+          project,
+          // Seed the chain with this note so ![[itself]] is refused straight away. Without it the
+          // guard still terminates, but only after rendering one full copy of the note inside itself.
+          embedChain: new Set([state.name.replace(/\.md$/, '').toLowerCase()]),
+          getBody: () => bodyEl.value,
+          setBody: (next) => {
+            bodyEl.value = next;
+            updateWords();
+            saveBody();
+            announceBody();
+          },
+        });
         wireReadingLinks(readEl, project);
         window.HoverPreview.attach(readEl, project);    // peek at a [[link]] without following it
         window.Attach.resolveReadingView(readEl, project);   // load attachment images, wire file links
@@ -155,6 +170,17 @@
       if (scroller) scroller.scrollTop = Math.max(0, bodyEl.offsetTop + lineIdx * lh - scroller.clientHeight / 3);
     }
     window.Tabs.updateContext(tab.id, { getBody: () => bodyEl.value, revealLine });
+
+    // Arrived here from a [[Note#Heading]] link — jump to the section. Deferred a frame because
+    // setMode('reading') renders asynchronously and there'd be nothing to scroll to yet.
+    if (opts.heading) {
+      setTimeout(() => {
+        const h = window.MD.headings(bodyEl.value)
+          .find((x) => x.text.toLowerCase() === String(opts.heading).trim().toLowerCase());
+        if (h) revealLine(h.line);
+        else window.Toast?.info?.(`“${state.name.replace(/\.md$/, '')}” has no heading “${opts.heading}”.`);
+      }, 60);
+    }
 
     // ----- changed on disk -----
     // Someone edited this note in another editor. Reload silently if the user has no unsaved
@@ -189,12 +215,26 @@
       a.addEventListener('click', async (e) => {
         e.preventDefault();
         const want = a.dataset.note;
+        const heading = a.dataset.heading || '';
         const notes = await window.api.listNotes(project.path);
         const match = notes.find((n) => n.replace(/\.md$/, '').toLowerCase() === want.toLowerCase());
-        if (match) { open(project, match); return; }
+        if (match) { open(project, match, heading ? { heading } : {}); return; }
         // create on the fly (Obsidian behaviour)
         const created = await window.api.createNote(project.path, want);
         open(project, created, { isNew: true });
+      });
+    });
+
+    // Footnote jumps. These are in-document anchors, and letting the browser follow an href
+    // would navigate the whole app window off index.html.
+    readEl.querySelectorAll('a[data-fn], a[data-fnback]').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const n = a.dataset.fn || a.dataset.fnback;
+        const target = readEl.querySelector(a.dataset.fn ? `#fn-${CSS.escape(n)}` : `#fnref-${CSS.escape(n)}`);
+        target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        target?.classList.add('fn-flash');
+        setTimeout(() => target?.classList.remove('fn-flash'), 900);
       });
     });
     readEl.querySelectorAll('span.tag').forEach((t) => {

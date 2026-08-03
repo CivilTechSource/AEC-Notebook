@@ -61,6 +61,13 @@
       });
       const el = window.Popover.element();
       el?.addEventListener('mouseleave', () => window.Popover.close());
+
+      // Decorate the preview too, so a callout or a highlighted snippet looks the same here as in
+      // the note. No getBody/setBody: a checkbox ticked in a preview would be writing to a file
+      // you aren't editing. embedDepth is maxed so a preview never expands embeds of its own —
+      // that would mean more disk reads behind a transient hover card.
+      const bodyEl = el?.querySelector('.pop-preview-body');
+      if (bodyEl) await window.MD.enhance(bodyEl, { project, embedDepth: Number.MAX_SAFE_INTEGER });
     }
   }
 
