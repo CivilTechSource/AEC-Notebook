@@ -20,15 +20,11 @@ work they describe — in plain JSON and Markdown you can still open without thi
 
 ## The problem it solves
 
-Engineering and architecture teams keep projects as folders on a shared drive. Everything *about*
-those projects — client, stage, flood zone, planning reference, fee — ends up in a spreadsheet
-that drifts out of sync with reality. The site notes end up in someone's inbox.
-
+A structured note system that engineers, architects and other disciplines can capture their knowledge/notes/experience on a project.
 AEC Notebook puts both next to the folder itself. Your files never move, and nothing is locked in:
 project data is a `project.json` you can read and diff, notes are ordinary `.md` files.
 
 ## What it does
-
 **Describe your projects however you like.** Every library folder gets its own field definitions —
 text, number, date, select, multi-select, file, checkbox — grouped into sections you can drag to
 reorder. Export a schema as JSON and reuse it on the next drive.
