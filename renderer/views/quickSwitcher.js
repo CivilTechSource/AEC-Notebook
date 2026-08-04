@@ -48,12 +48,15 @@
   }
 
   function close() {
+    seq++;                       // abandon any search still in flight
     overlay?.remove(); overlay = null; results = []; active = 0;
     try { returnFocusTo?.focus?.(); } catch { /* element gone */ }
     returnFocusTo = null;
   }
 
   function render() {
+    // The debounced search can land after the overlay has been closed.
+    if (!overlay) return;
     const host = overlay.querySelector('#qsResults');
     overlay.querySelector('#qsCount').textContent = results.length ? `${results.length} result${results.length === 1 ? '' : 's'}` : '';
     if (!results.length) { host.innerHTML = `<div class="qs-empty">No matches</div>`; return; }
@@ -63,10 +66,14 @@
       row.className = 'qs-row' + (i === active ? ' active' : '');
       const icon = r.type === 'note' ? window.ICON.note : window.ICON.boardTab;
       const title = r.type === 'note' ? r.noteName.replace(/\.md$/, '') : r.projectName;
-      const sub = r.type === 'note' ? `${r.projectName} · ${escHtml(r.snippet)}` : escHtml(r.snippet);
-      row.innerHTML = `<span class="qs-ico">${icon}</span><span class="qs-text"><span class="qs-title"></span><span class="qs-sub"></span></span><span class="qs-kind">${r.type}</span>`;
+      // Project names are folder names off a shared drive, so they are NOT trusted markup.
+      // This used to interpolate r.projectName unescaped into innerHTML; a folder named with a
+      // tag in it would have been injected into the page. Both parts go in as text now.
+      const sub = r.type === 'note' ? `${r.projectName} · ${r.snippet}` : r.snippet;
+      row.innerHTML = `<span class="qs-ico">${icon}</span><span class="qs-text"><span class="qs-title"></span><span class="qs-sub"></span></span><span class="qs-kind"></span>`;
       row.querySelector('.qs-title').textContent = title;
-      row.querySelector('.qs-sub').innerHTML = sub;
+      row.querySelector('.qs-sub').textContent = sub;
+      row.querySelector('.qs-kind').textContent = r.type;
       row.onmousemove = () => { if (active !== i) { active = i; render(); } };
       row.onclick = (e) => choose(r, e.metaKey || e.ctrlKey);
       host.appendChild(row);

@@ -18,7 +18,13 @@
     // silently does nothing — the hover preview renders through here too.
     if (typeof ctx.getBody !== 'function' || typeof ctx.setBody !== 'function') return;
 
-    [...el.querySelectorAll('input[type="checkbox"]')].forEach((box, index) => {
+    // Embedded notes are somebody else's file. The embed decorator runs before this one, so by
+    // now their checkboxes are in the DOM — wiring them here would write ticks into the HOST
+    // note's buffer, at the wrong index, corrupting a note the user isn't even editing.
+    const own = [...el.querySelectorAll('input[type="checkbox"]')]
+      .filter((box) => !box.closest('.md-embed-body'));
+
+    own.forEach((box, index) => {
       box.disabled = false;
       box.addEventListener('change', () => {
         const before = ctx.getBody();

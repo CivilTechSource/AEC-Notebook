@@ -4,6 +4,13 @@ const storage = require('./storage');
 
 function norm(s) { return String(s ?? '').toLowerCase(); }
 
+// Must stay in step with WIKILINK in renderer/editor/md.js. The groups are kept separate so a
+// rewrite can put the heading and alias back untouched:
+//   1 leading !   2 note name   3 #heading (optional)   4 |alias (optional)
+// Getting this wrong is silent: a [[Note#Heading]] link that this regex doesn't recognise is
+// invisible to backlinks and, worse, is left dangling when the note is renamed.
+const WIKILINK = /(!?)\[\[([^\]|#]+)((?:#[^\]|]+)?)((?:\|[^\]]*)?)\]\]/g;
+
 function makeSnippet(content, idx, len) {
   const start = Math.max(0, idx - 30);
   const end = Math.min(content.length, idx + len + 50);
@@ -19,9 +26,10 @@ async function findBacklinks(projectPath, noteName) {
       if (norm(file.replace(/\.md$/, '')) === target) continue; // skip self
       let content = '';
       try { content = await storage.readNote(projectPath, file); } catch { /* ignore */ }
-      const re = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g; let m, hit = false, snippet = '';
+      const re = new RegExp(WIKILINK.source, 'g');   // fresh lastIndex per file
+      let m, hit = false, snippet = '';
       while ((m = re.exec(content))) {
-        if (norm(m[1].trim()) === target) { hit = true; snippet = makeSnippet(content, m.index, m[0].length); break; }
+        if (norm(m[2].trim()) === target) { hit = true; snippet = makeSnippet(content, m.index, m[0].length); break; }
       }
       if (hit) out.push({ noteName: file, snippet });
     }
@@ -46,10 +54,12 @@ async function rewriteWikilinks(projectPath, oldName, newName) {
     let content;
     try { content = await storage.readNote(projectPath, file); } catch { continue; }
     let hits = 0;
-    const next = content.replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, (m, target, alias) => {
+    // The heading and alias are carried through verbatim: renaming a note must not also
+    // silently retarget [[Note#Heading]] at the top of the note, or drop a |display alias.
+    const next = content.replace(WIKILINK, (m, bang, target, heading, alias) => {
       if (norm(target.trim()) !== from) return m;
       hits += 1;
-      return `[[${to}${alias || ''}]]`;
+      return `${bang}[[${to}${heading}${alias}]]`;
     });
     if (hits) {
       try { await storage.writeNote(projectPath, file, next); changed.push(file); count += hits; }

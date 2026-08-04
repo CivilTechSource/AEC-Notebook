@@ -10,6 +10,8 @@ const MODULES = [
   require('./notes.ipc'),
   require('./attachments.ipc'),
   require('./search.ipc'),
+  require('./templates.ipc'),
+  require('./history.ipc'),
   require('./plugins.ipc'),
   require('./window.ipc'),
 ];

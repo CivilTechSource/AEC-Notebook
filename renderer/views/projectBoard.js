@@ -240,17 +240,85 @@
     block.className = 'section';
     block.innerHTML = `
       <button class="section-head"><span class="chev">${I().chevDown}</span><span class="s-title">Notes</span><span class="s-count" id="noteCount">0</span><span class="s-spacer"></span>
+        <span class="btn ghost" id="templateBtn" title="New note from a template" style="height:24px;padding:0 8px;">${I().template || ''} Template</span>
         <span class="btn ghost" id="newNoteBtn" title="New note" style="height:24px;padding:0 8px;">${I().plus} New</span></button>
       <div class="section-body" style="display:block;"><div class="note-list" id="boardNotes"></div></div>`;
-    block.querySelector('.section-head').onclick = (e) => { if (e.target.closest('#newNoteBtn')) return; block.classList.toggle('collapsed'); };
+    block.querySelector('.section-head').onclick = (e) => {
+      if (e.target.closest('#newNoteBtn') || e.target.closest('#templateBtn')) return;
+      block.classList.toggle('collapsed');
+    };
     block.querySelector('#newNoteBtn').onclick = async (e) => {
       e.stopPropagation();
       const name = await window.api.createNote(project.path, 'Untitled');
       await renderNotes(block, project);
       window.NotesView.open(project, name, { newTab: true, isNew: true });   // opens empty, title focused
     };
+    block.querySelector('#templateBtn').onclick = (e) => { e.stopPropagation(); templateMenu(e, block, project); };
     renderNotes(block, project);
     return block;
+  }
+
+  // Pick a template, then create the note with its tokens already resolved against THIS project's
+  // board values — that substitution is the whole point, so it happens here where the values are,
+  // rather than in the main process which would have to go and read them back.
+  async function templateMenu(e, block, project) {
+    document.querySelectorAll('.context-menu').forEach((m) => m.remove());
+
+    let list = [];
+    try { list = await window.api.listTemplates(); }
+    catch (err) { window.Toast?.error('Could not read templates: ' + (err.message || err)); return; }
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    menu.innerHTML =
+      (list.length
+        ? list.map((t, i) => `<button data-i="${i}">${escHtml(t.name)}</button>`).join('')
+        : '<div class="ctx-empty">No templates yet.</div>') +
+      '<div class="ctx-sep"></div><button data-a="folder">Open templates folder…</button>';
+    document.body.appendChild(menu);
+
+    const close = (ev) => {
+      if (ev && menu.contains(ev.target)) return;
+      menu.remove(); document.removeEventListener('mousedown', close);
+    };
+    setTimeout(() => document.addEventListener('mousedown', close), 0);
+
+    menu.querySelector('[data-a="folder"]').onclick = () => { close(); window.api.openTemplatesDir().catch(() => {}); };
+    menu.querySelectorAll('button[data-i]').forEach((btn) => {
+      btn.onclick = async () => {
+        close();
+        await createFromTemplate(list[Number(btn.dataset.i)], block, project);
+      };
+    });
+  }
+
+  async function createFromTemplate(tpl, block, project) {
+    let body;
+    try { body = await window.api.readTemplate(tpl.file); }
+    catch (err) { window.Toast?.error('Could not read that template: ' + (err.message || err)); return; }
+
+    const schema = window.Store.schemaForProject(project);
+    const fields = V().schemaFields(schema) || [];
+    const dated = `${tpl.name} ${window.Templates.formatDate(new Date(), 'YYYY-MM-DD')}`;
+
+    let name;
+    try { name = await window.api.createNote(project.path, dated); }
+    catch (err) { window.Toast?.error('Could not create the note: ' + (err.message || err)); return; }
+
+    // createNote de-duplicates, so the name it hands back is the one {{title}} should resolve to.
+    const content = window.Templates.substitute(body, {
+      title: name.replace(/\.md$/, ''),
+      values: project.data || {},
+      fields,
+    });
+
+    try { await window.api.writeNote(project.path, name, content); }
+    catch (err) { window.Toast?.error('Could not write the note: ' + (err.message || err)); return; }
+
+    await renderNotes(block, project);
+    window.NotesView.open(project, name, { newTab: true });
   }
 
   async function renderNotes(block, project) {
@@ -288,6 +356,13 @@
     menu.querySelector('[data-a="side"]').onclick = () => { window.NotesView.open(project, name, { toSide: true }); dismiss(); };
     menu.querySelector('[data-a="del"]').onclick = async () => {
       dismiss();
+      // Close the tab FIRST. Leaving it open meant the editor kept a live buffer over a file that
+      // no longer existed, and the next keystroke — or the already-pending autosave — wrote the
+      // note straight back. Closing also runs the destroy hook, which flushes that pending save
+      // before we read the content for undo, so what we capture is what the user last typed.
+      const tabId = window.NotesView.idFor(project, name);
+      if (window.Tabs.has(tabId)) window.Tabs.close(tabId);
+
       let content = '';
       try { content = await window.api.readNote(project.path, name); } catch { /* ignore */ }
       await window.api.deleteNote(project.path, name);

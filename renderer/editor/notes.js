@@ -24,9 +24,12 @@
       <div class="note-editor">
         <div class="note-topbar">
           <div class="note-meta mono" id="noteMeta"></div>
-          <div class="seg">
-            <button class="seg-btn" data-mode="edit">Edit</button>
-            <button class="seg-btn" data-mode="reading">Reading</button>
+          <div class="note-actions">
+            <button class="btn ghost" id="noteHistory" title="Version history">History</button>
+            <div class="seg">
+              <button class="seg-btn" data-mode="edit">Edit</button>
+              <button class="seg-btn" data-mode="reading">Reading</button>
+            </div>
           </div>
         </div>
         <input class="note-title" id="noteTitle" placeholder="Untitled" />
@@ -46,6 +49,12 @@
     bodyEl.value = content;
     const updateMeta = () => { metaEl.textContent = `${project.name}/notes/${state.name}`; };
     const updateWords = () => { wordsEl.textContent = (bodyEl.value.trim() ? bodyEl.value.trim().split(/\s+/).length : 0) + ' words'; };
+    // Grow the textarea to fit its content so the PANE scrolls rather than the box. Without this
+    // a long note scrolls inside the textarea, independently of the title and the outline pane.
+    const autoGrow = () => {
+      bodyEl.style.height = 'auto';                      // collapse first, or it can only ever grow
+      bodyEl.style.height = bodyEl.scrollHeight + 'px';
+    };
     updateMeta(); updateWords();
     const flash = (m) => { statusEl.textContent = m; statusEl.style.color = 'var(--green)'; clearTimeout(flash._t); flash._t = setTimeout(() => { if (statusEl.isConnected) statusEl.textContent = ''; }, 1200); };
 
@@ -58,7 +67,7 @@
     // Debounced separately from the save: those panes re-render, and doing that per keystroke
     // makes typing feel heavy.
     const announceBody = debounce(() => window.Events?.emit('note-body-changed', { id: tab.id }), 300);
-    bodyEl.addEventListener('input', () => { updateWords(); saveBody(); announceBody(); });
+    bodyEl.addEventListener('input', () => { updateWords(); autoGrow(); saveBody(); announceBody(); });
     // Closing the tab (or quitting) inside the 500 ms debounce window would otherwise drop
     // the last keystrokes — flush synchronously on teardown.
     window.Tabs.setDestroyHook(tab.id, () => saveBody.flush());
@@ -122,6 +131,8 @@
       const reading = mode === 'reading';
       bodyEl.hidden = reading;
       readEl.hidden = !reading;
+      // scrollHeight is 0 while hidden, so the textarea can only be measured once it's visible.
+      if (!reading) autoGrow();
       if (reading) {
         saveBody.flush?.();
         try { await window.api.writeNote(project.path, state.name, bodyEl.value); } catch { /* toast already */ }
@@ -137,6 +148,7 @@
           setBody: (next) => {
             bodyEl.value = next;
             updateWords();
+            autoGrow();
             saveBody();
             announceBody();
           },
@@ -171,6 +183,19 @@
     }
     window.Tabs.updateContext(tab.id, { getBody: () => bodyEl.value, revealLine });
 
+    // ----- version history -----
+    pane.querySelector('#noteHistory').onclick = () => {
+      // Flush first: the snapshot the viewer diffs against is whatever is on disk, so a pending
+      // autosave would otherwise make the comparison look wrong by half a sentence.
+      saveBody.flush();
+      window.HistoryView.open(project, state.name, () => bodyEl.value, (text) => {
+        bodyEl.value = text;
+        updateWords(); autoGrow(); announceBody();
+        saveBody.flush();                       // write it straight away, don't wait out the debounce
+        if (state.mode === 'reading') setMode('reading');
+      });
+    };
+
     // Arrived here from a [[Note#Heading]] link — jump to the section. Deferred a frame because
     // setMode('reading') renders asynchronously and there'd be nothing to scroll to yet.
     if (opts.heading) {
@@ -194,7 +219,7 @@
       let disk = '';
       try { disk = await window.api.readNote(project.path, state.name); } catch { return; }
       if (disk === bodyEl.value) { dirty = false; return; }
-      if (!dirty) { bodyEl.value = disk; updateWords(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('reloaded from disk'); return; }
+      if (!dirty) { bodyEl.value = disk; updateWords(); autoGrow(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('reloaded from disk'); return; }
       const keepMine = await window.Modal.confirm({
         title: 'This note changed on disk',
         body: `“${state.name}” was edited outside the app while you had unsaved changes. Keep your version, or discard it and load the one on disk?`,
@@ -202,7 +227,7 @@
         cancelText: 'Load from disk',
       });
       if (keepMine) { originalSave.flush(); }
-      else { bodyEl.value = disk; dirty = false; updateWords(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('loaded from disk'); }
+      else { bodyEl.value = disk; dirty = false; updateWords(); autoGrow(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('loaded from disk'); }
     };
     window.FsWatch?.subscribe(onExternal, bodyEl);
 
@@ -250,5 +275,6 @@
     return f;
   }
 
-  window.NotesView = { open };
+  // Exposed so other views can find (and close) the tab holding a given note.
+  window.NotesView = { open, idFor: noteId };
 })();

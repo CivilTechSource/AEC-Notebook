@@ -54,6 +54,16 @@ contextBridge.exposeInMainWorld('api', {
   search: (query, projects) => ipcRenderer.invoke('search:run', { query, projects }),
   backlinks: (p, name) => ipcRenderer.invoke('search:backlinks', { path: p, name }),
 
+  // Note version history (restoring goes back through writeNote, so there's no restore channel)
+  listSnapshots: (p, name) => ipcRenderer.invoke('history:list', { path: p, name }),
+  readSnapshot: (p, name, ts) => ipcRenderer.invoke('history:read', { path: p, name, ts }),
+
+  // Note templates
+  listTemplates: () => ipcRenderer.invoke('templates:list'),
+  readTemplate: (file) => ipcRenderer.invoke('templates:read', { file }),
+  templatesDir: () => ipcRenderer.invoke('templates:dir'),
+  openTemplatesDir: () => ipcRenderer.invoke('templates:openDir'),
+
   // Plugins
   listPlugins: () => ipcRenderer.invoke('plugins:list'),
   pluginSource: (id) => ipcRenderer.invoke('plugins:source', { id }),

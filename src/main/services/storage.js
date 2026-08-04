@@ -212,14 +212,33 @@ async function readNote(projectPath, name) {
   catch (err) { if (err.code === 'ENOENT') return ''; throw err; }
 }
 
+// Notes get the same treatment as project.json: temp file + rename, serialised per note.
+//
+// This used to be a bare writeFile. Two things went wrong with that. A crash or power loss
+// partway through left a truncated note — and notes are the user's actual content, not
+// regenerable metadata. And nothing serialised concurrent writers, so the 500 ms autosave, a
+// ticked checkbox and a rename-driven link rewrite could interleave on the same file.
+//
+// Chained per note rather than per project: two different notes have no reason to wait on
+// each other, and autosave is on the keystroke path.
+const _noteChains = new Map();
 async function writeNote(projectPath, name, content) {
   const dir = await notesDir(projectPath);
-  await ensureDir(dir);
-  const safe = path.basename(name.endsWith('.md') ? name : `${name}.md`);
+  const safe = path.basename(String(name).endsWith('.md') ? String(name) : `${name}.md`);
   const file = path.join(dir, safe);
-  markSelfWrite(file);        // so the fs watcher doesn't report our own write as external
-  await fsp.writeFile(file, content, 'utf8');
-  return safe;
+
+  const prev = _noteChains.get(file) || Promise.resolve();
+  const run = prev.then(async () => {
+    await ensureDir(dir);
+    markSelfWrite(file);      // so the fs watcher doesn't report our own write as external
+    const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
+    await fsp.writeFile(tmp, content, 'utf8');
+    await fsp.rename(tmp, file);
+    return safe;
+  });
+  // Keep the chain alive past a failure so one bad write doesn't wedge every later one.
+  _noteChains.set(file, run.catch(() => {}));
+  return run;
 }
 
 async function uniqueName(dir, base) {
@@ -234,9 +253,21 @@ async function uniqueName(dir, base) {
 async function createNote(projectPath, base = 'Untitled') {
   const dir = await notesDir(projectPath);
   await ensureDir(dir);
-  const name = await uniqueName(dir, base);
-  await fsp.writeFile(path.join(dir, name), '', 'utf8');
-  return name;
+  // 'wx' fails if the file already exists. uniqueName checks first, but between that check and
+  // the write another creation can land on the same name — and a plain writeFile would silently
+  // truncate the note that got there first. Retry rather than overwrite.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const name = await uniqueName(dir, base);
+    const file = path.join(dir, name);
+    try {
+      markSelfWrite(file);
+      await fsp.writeFile(file, '', { encoding: 'utf8', flag: 'wx' });
+      return name;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+  }
+  throw new Error(`Could not find a free filename for "${base}"`);
 }
 
 async function renameNote(projectPath, oldName, newBase) {
@@ -250,6 +281,10 @@ async function renameNote(projectPath, oldName, newBase) {
     if (full === from) break;
     try { await fsp.access(full); target = `${cleanBase} ${n++}.md`; } catch { break; }
   }
+  // Both names change on disk; stamp both so the watcher doesn't report our own rename back to
+  // the editor as an external edit.
+  markSelfWrite(from);
+  markSelfWrite(path.join(dir, target));
   await fsp.rename(from, path.join(dir, target));
   return target;
 }

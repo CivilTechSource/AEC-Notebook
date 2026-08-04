@@ -1,7 +1,12 @@
 /* editor.css — the note editor, its mode toggle, the rendered reading view, and backlinks. */
 
-/* ---------- NOTE EDITOR (Obsidian-style) ---------- */
-.note-editor { max-width: 780px; margin: 0 auto; padding: 28px 44px 40px; display: flex; flex-direction: column; min-height: 100%; }
+/* ---------- NOTE EDITOR (Obsidian-style) ----------
+   The editor's pane has to become a flex column for the editor to fill the window. min-height:100%
+   on .note-editor alone did nothing: .pane is height:auto, so the percentage had no definite
+   height to resolve against and collapsed to zero — which is why edit mode stopped short of the
+   bottom while reading mode (sized by its own content) looked right. */
+.tabpanes > .pane:has(> .note-editor) { display: flex; flex-direction: column; min-height: 100%; }
+.note-editor { max-width: 780px; margin: 0 auto; padding: 28px 44px 40px; display: flex; flex-direction: column; flex: 1; width: 100%; min-height: 100%; }
 .note-meta { font-size: 11px; color: var(--muted-2); margin-bottom: 14px; }
 .note-title {
   width: 100%; background: transparent; border: none; padding: 0 0 6px;
@@ -9,16 +14,58 @@
 }
 .note-title:focus { outline: none; }
 .note-title::placeholder { color: var(--faint); }
+/* flex: 1 0 auto, not flex: 1 — the basis has to stay `auto` so the height JS sets from
+   scrollHeight is honoured. The box then grows past that to fill a short note's leftover space,
+   and never shrinks below its content. overflow:hidden because the PANE does the scrolling:
+   a textarea with its own scrollbar would scroll independently of the outline and the title. */
 .note-body {
-  flex: 1; width: 100%; background: transparent; border: none; resize: none;
+  flex: 1 0 auto; width: 100%; background: transparent; border: none; resize: none;
   font-family: var(--mono); font-size: 14px; line-height: 1.7; color: var(--text-2);
-  padding: 10px 0 0; min-height: 360px;
+  padding: 10px 0 0; min-height: 320px; overflow: hidden;
 }
 .note-body:focus { outline: none; }
 .note-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted-2); }
 
 /* ---------- note topbar + mode toggle ---------- */
 .note-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.note-actions { display: flex; align-items: center; gap: var(--sp-3); }
+.note-actions .btn { height: 26px; padding: 0 10px; font-size: var(--fs-sm); }
+
+/* ---------- version history ---------- */
+.hist-modal { width: 900px; max-width: 94vw; height: 640px; max-height: 88vh; display: flex; flex-direction: column; padding: 0; }
+.hist-head { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--line); flex: none; }
+.hist-note { font-size: var(--fs-sm); color: var(--muted-2); }
+.hist-body { flex: 1; display: flex; min-height: 0; }
+
+.hist-list { width: 230px; flex: none; border-right: 1px solid var(--line); overflow-y: auto; padding: var(--sp-2); }
+.hist-row {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  width: 100%; text-align: left; padding: var(--sp-2) 10px;
+  border-radius: var(--radius-sm); cursor: default;
+}
+.hist-row:hover { background: var(--hover); }
+.hist-row.active { background: var(--accent-tint); }
+.hist-when { font-size: 12.5px; color: var(--text-2); }
+.hist-row.active .hist-when { color: var(--text); font-weight: 600; }
+.hist-abs { font-size: 10.5px; color: var(--muted-2); }
+
+.hist-diff { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hist-diff-head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5); border-bottom: 1px solid var(--line); flex: none; }
+.hist-stat { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 600; }
+.hist-stat.hist-add { color: var(--green); }
+.hist-stat.hist-del { color: var(--red); }
+.hist-vs { font-size: var(--fs-xs); color: var(--muted-2); }
+
+.hist-lines { flex: 1; overflow: auto; padding: var(--sp-3) 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+.hist-line { display: flex; gap: var(--sp-3); padding: 0 var(--sp-5); white-space: pre-wrap; overflow-wrap: anywhere; }
+.hist-sign { flex: none; width: 10px; color: var(--muted-2); user-select: none; }
+.hist-text { flex: 1; min-width: 0; }
+.hist-line.hist-same { color: var(--muted); }
+.hist-line.hist-add { background: var(--green-tint); color: var(--text); }
+.hist-line.hist-add .hist-sign { color: var(--green); }
+.hist-line.hist-del { background: var(--red-tint-weak); color: var(--text); }
+.hist-line.hist-del .hist-sign { color: var(--red); }
+.hist-gap { color: var(--faint); font-size: var(--fs-xs); padding: var(--sp-2) var(--sp-5); user-select: none; }
 .seg { display: flex; background: var(--bg-card); border: 1px solid var(--line-2); border-radius: 7px; padding: 2px; }
 .seg-btn { padding: 4px 12px; border-radius: 5px; font-size: 12px; color: var(--muted); }
 .seg-btn.active { background: var(--accent); color: #fff; }
