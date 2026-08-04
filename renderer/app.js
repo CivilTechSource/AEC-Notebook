@@ -241,6 +241,12 @@
       const editing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       // None of these may fire while the user is typing — Ctrl+F used to yank you out of a
       // note and wipe the project filter mid-sentence.
+      //
+      // This guard is now load-bearing for undo, not just a convenience. CodeMirror's content is
+      // contenteditable, so `editing` is true whenever the note editor has focus — which is
+      // exactly the boundary we want: CodeMirror's own history owns Ctrl+Z inside the editor,
+      // app-level undo (destructive actions: deleted notes, fields, sections) owns it everywhere
+      // else. Don't narrow this check to INPUT/TEXTAREA without replacing that split.
       if (editing) return;
       if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); focusSearch(); }            // filter project list
       else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); window.QuickSwitcher.open(); } // quick switcher / search

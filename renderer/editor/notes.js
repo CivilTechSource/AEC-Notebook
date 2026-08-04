@@ -19,6 +19,9 @@
     try { content = await window.api.readNote(project.path, name); }
     catch (err) { window.Toast?.error('Could not open note: ' + err.message); }
     const state = { name, mode: opts.isNew ? 'edit' : 'edit' };
+    // Set by the editor's onChange, cleared once the buffer matches disk. Declared up here
+    // because onChange is wired at editor construction, before the reload logic below.
+    let dirty = false;
 
     pane.innerHTML = `
       <div class="note-editor">
@@ -33,33 +36,41 @@
           </div>
         </div>
         <input class="note-title" id="noteTitle" placeholder="Untitled" />
-        <textarea class="note-body" id="noteBody" placeholder="Start writing…  [[link]] to notes, #tag to categorise"></textarea>
+        <div class="note-body" id="noteBody"></div>
         <div class="note-reading" id="noteReading" hidden></div>
         <div class="note-foot"><span id="noteStatus"></span><span style="flex:1"></span><span id="noteWords" class="mono"></span></div>
       </div>`;
 
     const titleEl = pane.querySelector('#noteTitle');
-    const bodyEl = pane.querySelector('#noteBody');
+    const bodyHost = pane.querySelector('#noteBody');
     const readEl = pane.querySelector('#noteReading');
     const metaEl = pane.querySelector('#noteMeta');
     const statusEl = pane.querySelector('#noteStatus');
     const wordsEl = pane.querySelector('#noteWords');
 
     titleEl.value = state.name.replace(/\.md$/, '');
-    bodyEl.value = content;
+
+    // The editor. Everything below talks to `editor`, never to CodeMirror directly — see
+    // editor/noteEditor.js for why.
+    const editor = window.NoteEditor.create({
+      parent: bodyHost,
+      doc: content,
+      project,
+      placeholderText: 'Start writing…  [[link]] to notes, #tag to categorise',
+      onChange: () => { dirty = true; updateWords(); saveBody(); announceBody(); },
+      onSave: () => saveBody.flush(),
+    });
+
     const updateMeta = () => { metaEl.textContent = `${project.name}/notes/${state.name}`; };
-    const updateWords = () => { wordsEl.textContent = (bodyEl.value.trim() ? bodyEl.value.trim().split(/\s+/).length : 0) + ' words'; };
-    // Grow the textarea to fit its content so the PANE scrolls rather than the box. Without this
-    // a long note scrolls inside the textarea, independently of the title and the outline pane.
-    const autoGrow = () => {
-      bodyEl.style.height = 'auto';                      // collapse first, or it can only ever grow
-      bodyEl.style.height = bodyEl.scrollHeight + 'px';
+    const updateWords = () => {
+      const text = editor.getValue().trim();
+      wordsEl.textContent = (text ? text.split(/\s+/).length : 0) + ' words';
     };
     updateMeta(); updateWords();
     const flash = (m) => { statusEl.textContent = m; statusEl.style.color = 'var(--green)'; clearTimeout(flash._t); flash._t = setTimeout(() => { if (statusEl.isConnected) statusEl.textContent = ''; }, 1200); };
 
     const saveBody = debounce(async () => {
-      try { await window.api.writeNote(project.path, state.name, bodyEl.value); }
+      try { await window.api.writeNote(project.path, state.name, editor.getValue()); }
       catch (err) { window.Toast?.error('Could not save note: ' + err.message); return; }
       flash('saved'); window.setStatus?.('Saved ' + state.name);
     }, 500);
@@ -67,13 +78,12 @@
     // Debounced separately from the save: those panes re-render, and doing that per keystroke
     // makes typing feel heavy.
     const announceBody = debounce(() => window.Events?.emit('note-body-changed', { id: tab.id }), 300);
-    bodyEl.addEventListener('input', () => { updateWords(); autoGrow(); saveBody(); announceBody(); });
     // Closing the tab (or quitting) inside the 500 ms debounce window would otherwise drop
-    // the last keystrokes — flush synchronously on teardown.
-    window.Tabs.setDestroyHook(tab.id, () => saveBody.flush());
-    bodyEl.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveBody(); } });
-    window.Attach.wireEditor(bodyEl, project);          // drop / paste images & files
-    window.WikilinkSuggest.attach(bodyEl, project);     // [[ … ]] completion
+    // the last keystrokes — flush synchronously on teardown, and take the editor down with it so
+    // CodeMirror's DOM listeners don't outlive the pane.
+    window.Tabs.setDestroyHook(tab.id, () => { saveBody.flush(); editor.destroy(); });
+    // Ctrl+S, [[ ]] completion and file drop/paste are all editor extensions now — see
+    // editor/cm/setup.js, cm/wikilink.js and cm/attachments.js.
 
     // inline title rename
     const applyRename = async () => {
@@ -122,21 +132,22 @@
       window.Tabs.emitActive();      // backlinks just changed under the sidebar's feet
     }
     titleEl.addEventListener('change', applyRename);
-    titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyRename(); bodyEl.focus(); } });
+    titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyRename(); editor.focus(); } });
 
     // ----- mode toggle -----
     const setMode = async (mode) => {
       state.mode = mode;
       pane.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
       const reading = mode === 'reading';
-      bodyEl.hidden = reading;
+      bodyHost.hidden = reading;
       readEl.hidden = !reading;
-      // scrollHeight is 0 while hidden, so the textarea can only be measured once it's visible.
-      if (!reading) autoGrow();
+      // CodeMirror measures itself lazily and reports zero while hidden, so it has to be told to
+      // re-measure once it's back on screen or the first screenful renders at the wrong height.
+      if (!reading) requestAnimationFrame(() => editor.view.requestMeasure());
       if (reading) {
         saveBody.flush?.();
-        try { await window.api.writeNote(project.path, state.name, bodyEl.value); } catch { /* toast already */ }
-        readEl.innerHTML = window.MD.render(bodyEl.value);
+        try { await window.api.writeNote(project.path, state.name, editor.getValue()); } catch { /* toast already */ }
+        readEl.innerHTML = window.MD.render(editor.getValue());
         // Callouts, code highlighting, maths, diagrams, embeds and live checkboxes. getBody/
         // setBody are what let a ticked checkbox write back into this buffer.
         await window.MD.enhance(readEl, {
@@ -144,11 +155,13 @@
           // Seed the chain with this note so ![[itself]] is refused straight away. Without it the
           // guard still terminates, but only after rendering one full copy of the note inside itself.
           embedChain: new Set([state.name.replace(/\.md$/, '').toLowerCase()]),
-          getBody: () => bodyEl.value,
+          getBody: () => editor.getValue(),
           setBody: (next) => {
-            bodyEl.value = next;
+            // setValue is programmatic and deliberately doesn't fire onChange, so the follow-up
+            // work the change handler would have done has to be done here.
+            editor.setValue(next);
+            dirty = true;
             updateWords();
-            autoGrow();
             saveBody();
             announceBody();
           },
@@ -162,35 +175,30 @@
     setMode(state.mode);
 
     // ----- sidebar context -----
-    // Jumping to a heading is the editor's job: only it knows whether the textarea or the
-    // rendered view is on screen, and the two need completely different treatment.
+    // Jumping to a heading still belongs here, because only this knows which of the two views is
+    // on screen. The editing half is now one call — the mirror-measuring arithmetic the textarea
+    // needed is gone.
     function revealLine(lineIdx) {
-      if (!bodyEl.isConnected) return;
+      if (!editor.isConnected()) return;
       if (state.mode === 'reading') {
         // The rendered headings appear in the same order as the parsed ones, so match by index.
-        const idx = window.MD.headings(bodyEl.value).findIndex((h) => h.line === lineIdx);
+        const idx = window.MD.headings(editor.getValue()).findIndex((h) => h.line === lineIdx);
         readEl.querySelectorAll('h1,h2,h3,h4,h5,h6')[idx]?.scrollIntoView({ block: 'start', behavior: 'smooth' });
         return;
       }
-      const lines = bodyEl.value.split('\n');
-      const pos = lines.slice(0, lineIdx).reduce((n, l) => n + l.length + 1, 0);
-      bodyEl.focus();
-      bodyEl.setSelectionRange(pos, pos + (lines[lineIdx] || '').length);
-      // The textarea grows to fit its content, so it's the PANE that scrolls, not the box.
-      const lh = parseFloat(getComputedStyle(bodyEl).lineHeight) || 22;
-      const scroller = pane.closest('.tabpanes');
-      if (scroller) scroller.scrollTop = Math.max(0, bodyEl.offsetTop + lineIdx * lh - scroller.clientHeight / 3);
+      editor.revealLine(lineIdx);
     }
-    window.Tabs.updateContext(tab.id, { getBody: () => bodyEl.value, revealLine });
+    window.Tabs.updateContext(tab.id, { getBody: () => editor.getValue(), revealLine });
 
     // ----- version history -----
     pane.querySelector('#noteHistory').onclick = () => {
       // Flush first: the snapshot the viewer diffs against is whatever is on disk, so a pending
       // autosave would otherwise make the comparison look wrong by half a sentence.
       saveBody.flush();
-      window.HistoryView.open(project, state.name, () => bodyEl.value, (text) => {
-        bodyEl.value = text;
-        updateWords(); autoGrow(); announceBody();
+      window.HistoryView.open(project, state.name, () => editor.getValue(), (text) => {
+        editor.setValue(text);
+        dirty = true;
+        updateWords(); announceBody();
         saveBody.flush();                       // write it straight away, don't wait out the debounce
         if (state.mode === 'reading') setMode('reading');
       });
@@ -200,7 +208,7 @@
     // setMode('reading') renders asynchronously and there'd be nothing to scroll to yet.
     if (opts.heading) {
       setTimeout(() => {
-        const h = window.MD.headings(bodyEl.value)
+        const h = window.MD.headings(editor.getValue())
           .find((x) => x.text.toLowerCase() === String(opts.heading).trim().toLowerCase());
         if (h) revealLine(h.line);
         else window.Toast?.info?.(`“${state.name.replace(/\.md$/, '')}” has no heading “${opts.heading}”.`);
@@ -210,26 +218,34 @@
     // ----- changed on disk -----
     // Someone edited this note in another editor. Reload silently if the user has no unsaved
     // work; otherwise offer the choice rather than picking a side for them.
-    let dirty = false;
-    bodyEl.addEventListener('input', () => { dirty = true; });
-    const originalSave = saveBody;
+    // `dirty` is declared at the top of renderEditor and set by the editor's onChange.
+    const loadFromDisk = (disk, message) => {
+      editor.setValue(disk);
+      dirty = false;
+      updateWords();
+      announceBody();
+      if (state.mode === 'reading') setMode('reading');
+      flash(message);
+    };
+
     const onExternal = async (change) => {
       if (change.kind !== 'note' || change.projectPath !== project.path || change.noteName !== state.name) return;
-      if (!bodyEl.isConnected) return;
+      if (!editor.isConnected()) return;
       let disk = '';
       try { disk = await window.api.readNote(project.path, state.name); } catch { return; }
-      if (disk === bodyEl.value) { dirty = false; return; }
-      if (!dirty) { bodyEl.value = disk; updateWords(); autoGrow(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('reloaded from disk'); return; }
+      if (disk === editor.getValue()) { dirty = false; return; }
+      if (!dirty) { loadFromDisk(disk, 'reloaded from disk'); return; }
       const keepMine = await window.Modal.confirm({
         title: 'This note changed on disk',
         body: `“${state.name}” was edited outside the app while you had unsaved changes. Keep your version, or discard it and load the one on disk?`,
         okText: 'Keep mine',
         cancelText: 'Load from disk',
       });
-      if (keepMine) { originalSave.flush(); }
-      else { bodyEl.value = disk; dirty = false; updateWords(); autoGrow(); announceBody(); if (state.mode === 'reading') setMode('reading'); flash('loaded from disk'); }
+      if (keepMine) saveBody.flush();
+      else loadFromDisk(disk, 'loaded from disk');
     };
-    window.FsWatch?.subscribe(onExternal, bodyEl);
+    // Anchored to the editor's own DOM, so the subscription drops when the tab closes.
+    window.FsWatch?.subscribe(onExternal, bodyHost);
 
     if (opts.isNew) setTimeout(() => { titleEl.focus(); titleEl.select(); }, 0);
   }

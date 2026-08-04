@@ -129,6 +129,9 @@
   <script src="vendor/purify.min.js"></script>
   <script src="vendor/prism.js"></script>
   <script src="vendor/katex/katex.min.js"></script>
+  <!-- The only bundled dependency: CodeMirror is ESM-only with no browser build, so
+       scripts/vendor.js runs esbuild over scripts/codemirror-entry.js to produce this. -->
+  <script src="vendor/codemirror.js"></script>
   <!-- mermaid is deliberately absent: it is 3.5 MB and editor/markdown/mermaid.js injects it on
        first sight of a ```mermaid block, so notes without diagrams never pay for it. -->
   <script src="../src/shared/data_validation.js"></script>
@@ -157,7 +160,14 @@
   <script src="editor/markdown/highlight.js"></script>
   <script src="editor/markdown/math.js"></script>
   <script src="editor/markdown/checkboxes.js"></script>
-  <script src="editor/wikilinkSuggest.js"></script>
+  <!-- CodeMirror wiring. theme/commands/wikilink/attachments are read by setup.js, which is read
+       by noteEditor.js, which notes.js talks to — so they load in that order. -->
+  <script src="editor/cm/theme.js"></script>
+  <script src="editor/cm/commands.js"></script>
+  <script src="editor/cm/wikilink.js"></script>
+  <script src="editor/cm/attachments.js"></script>
+  <script src="editor/cm/setup.js"></script>
+  <script src="editor/noteEditor.js"></script>
   <script src="editor/hoverPreview.js"></script>
   <script src="editor/notes.js"></script>
   <script src="plugins/pluginBridge.js"></script>

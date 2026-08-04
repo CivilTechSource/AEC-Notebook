@@ -63,5 +63,7 @@
     });
   }
 
-  window.Attach = { wireEditor, resolveReadingView, insertFromFiles, isImage };
+  // readAsBase64 is shared with the CodeMirror handlers in editor/cm/attachments.js — the reading
+  // and saving half of this module is identical for both editors; only the insert differs.
+  window.Attach = { wireEditor, resolveReadingView, insertFromFiles, isImage, readAsBase64 };
 })();

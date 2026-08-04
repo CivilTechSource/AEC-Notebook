@@ -6,9 +6,14 @@
 // `npm audit` and Dependabot still see them; this script is how the committed copies get updated.
 // Run `npm run vendor` after bumping any of these dependencies.
 //
-// Every library here must ship a build that runs from a <script> tag as-is. That rules out
+// Most libraries here must ship a build that runs from a <script> tag as-is. That rules out
 // anything CommonJS- or ESM-only: highlight.js, for instance, ships neither a UMD nor an IIFE
 // bundle, which is why syntax highlighting uses Prism.
+//
+// CodeMirror is the one exception, and the reason esbuild is a devDependency. It is ESM-only
+// across a dozen packages with no browser build at all, so it gets bundled here into a single
+// IIFE. This is the ONLY bundling in the project: application code stays plain ES2022 loaded by
+// ordered <script> tags, and nothing in renderer/ or src/ is compiled. Keep it that way.
 
 const fs = require('fs');
 const path = require('path');
@@ -100,6 +105,33 @@ for (const d of DIRS) {
     if (missing.length) fail(`prism languages not found: ${missing.join(', ')}`);
     fs.writeFileSync(path.join(OUT, 'prism.js'), parts.join('\n;\n'));
     console.log(`vendored prism.js <- prismjs@${version('prismjs')} (core + ${PRISM_LANGUAGES.length - missing.length} languages)`);
+  }
+}
+
+// CodeMirror: the one bundled dependency. scripts/codemirror-entry.js is the ESM entry point;
+// the output publishes window.CM6 and is loaded by a plain <script> tag like everything else.
+{
+  const entry = path.join(ROOT, 'scripts', 'codemirror-entry.js');
+  const out = path.join(OUT, 'codemirror.js');
+  try {
+    const esbuild = require('esbuild');
+    const res = esbuild.buildSync({
+      entryPoints: [entry],
+      outfile: out,
+      bundle: true,
+      format: 'iife',
+      platform: 'browser',
+      target: 'chrome120',        // Electron 43 ships a much newer Chromium; no need to down-level
+      minify: true,
+      sourcemap: false,           // a 2 MB map committed to the repo helps nobody
+      legalComments: 'none',
+      logLevel: 'silent',
+    });
+    if (res.errors?.length) throw new Error(res.errors.map((e) => e.text).join('; '));
+    const kb = Math.round(fs.statSync(out).size / 1024);
+    console.log(`vendored codemirror.js <- @codemirror/* bundled by esbuild (${kb} KB)`);
+  } catch (e) {
+    fail(`could not bundle CodeMirror: ${e.message}`);
   }
 }
 
