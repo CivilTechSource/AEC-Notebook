@@ -111,3 +111,65 @@ test('a fresh install with no config gets a working empty schema', async () => {
   assert.ok(Array.isArray(s.sections), 'unknown path should still yield a usable schema');
   fs.rmSync(home, { recursive: true, force: true });
 });
+
+test('schemas no library folder references are collected', async () => {
+  // removeLibraryPath drops the path but not its schema, and the byPath migration mints a fresh id
+  // for a schema whose path is gone. Both left schemas.json growing invisibly.
+  const libA = path.join(os.tmpdir(), 'LibKept');
+  const { Store, storage, home } = await bootStore({
+    'library.json': { paths: [{ path: libA, collapsed: false, depth: 1, schemaId: 'sch_keep' }] },
+    'schemas.json': {
+      byId: {
+        sch_keep: { version: 1, sections: [{ id: 's1', title: 'Details', fields: [{ id: 'f1', key: 'client', label: 'Client', type: 'text' }] }] },
+        sch_orphan_1: { version: 1, sections: [{ id: 's2', title: 'Gone', fields: [] }] },
+        sch_orphan_2: { version: 1, sections: [{ id: 's3', title: 'Also gone', fields: [] }] },
+      },
+    },
+  });
+
+  await Store.loadConfig();
+
+  const saved = await storage.readConfig('schemas.json');
+  assert.deepStrictEqual(Object.keys(saved.byId), ['sch_keep'], 'only the referenced schema survives');
+  assert.strictEqual(Store.schemaForPath(libA).sections[0].fields[0].key, 'client', 'and it is intact');
+
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('a failed schemas.json read never triggers the collection', async () => {
+  // With an unreadable schemas.json, state.schemas is empty and "unreferenced" would describe
+  // every schema the user has — collecting then would turn one bad read into permanent loss.
+  const libA = path.join(os.tmpdir(), 'LibA2');
+  const home = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-store-'));
+  process.env.PNOTES_HOME = home;
+  delete require.cache[require.resolve('../src/main/services/storage')];
+  const storage = require('../src/main/services/storage');
+  await storage.writeConfig('library.json', { paths: [{ path: libA, collapsed: false, depth: 1, schemaId: 'sch_x' }] });
+  await fsp.writeFile(path.join(home, 'schemas.json'), '{ this is not json', 'utf8');
+
+  const errors = [];
+  const win = {
+    api: {
+      readConfig: (f) => storage.readConfig(f),
+      writeConfig: (f, d) => storage.writeConfig(f, d),
+      scanRootWithData: async () => [],
+      watchProjects: async () => 0,
+    },
+    Toast: { error: (m) => errors.push(m) },
+  };
+  const ctx = vm.createContext(win);
+  ctx.window = win;
+  vm.runInContext(VALIDATION_SRC, ctx);
+  vm.runInContext(STORE_SRC, ctx);
+
+  await win.Store.loadConfig();
+
+  assert.ok(errors.length, 'the user is told the file could not be read');
+  // schemas.json was quarantined by readConfig; the key thing is that we did not write an
+  // empty replacement over anything.
+  const rewritten = await storage.readConfig('schemas.json');
+  assert.ok(rewritten === null || Object.keys(rewritten.byId || {}).length === 0,
+    'no schema file was rebuilt from empty state');
+
+  fs.rmSync(home, { recursive: true, force: true });
+});

@@ -143,3 +143,80 @@ test('rewriteWikilinks matches case-insensitively, like the link resolver', asyn
   assert.strictEqual(res.count, 1);
   assert.match(await storage.readNote(p, 'A.md'), /\[\[Site Inspection\]\]/);
 });
+
+// ---------- attachment references ----------
+//
+// The inverse of backlinks, and the only way to know whether deleting an attachment breaks a note.
+// Being too strict here is silent and expensive: a link shape the regex misses is reported in the
+// UI as "not linked from any note", which is how somebody deletes a file that was in use.
+
+test('findAttachmentRefs maps a file to the notes that use it', async () => {
+  const search = require('../src/main/services/search');
+  const p = await project('P-att', {
+    'Visit.md': 'photo below\n\n![site.png](attachments/site.png)\n',
+    'Survey.md': 'same photo ![site.png](attachments/site.png) and [spec](attachments/spec.pdf)',
+    'Empty.md': 'no attachments here',
+  });
+  const refs = await search.findAttachmentRefs(p);
+  assert.deepStrictEqual(refs['site.png'].sort(), ['Survey.md', 'Visit.md']);
+  assert.deepStrictEqual(refs['spec.pdf'], ['Survey.md']);
+});
+
+test('encoded and legacy raw links collapse onto the same file', async () => {
+  // One note written before targets were encoded, one after. They mean the same file, so a
+  // deletion prompt must say "2 notes", not treat one of them as unreferenced.
+  const search = require('../src/main/services/search');
+  const p = await project('P-enc', {
+    'Old.md': '![diamond 1.png](attachments/diamond 1.png)',
+    'New.md': '![diamond 1.png](attachments/diamond%201.png)',
+  });
+  const refs = await search.findAttachmentRefs(p);
+  assert.deepStrictEqual(Object.keys(refs), ['diamond 1.png']);
+  assert.deepStrictEqual(refs['diamond 1.png'].sort(), ['New.md', 'Old.md']);
+});
+
+test('parens and brackets in a filename are still matched', async () => {
+  const search = require('../src/main/services/search');
+  const p = await project('P-paren', {
+    'A.md': '![plan](attachments/plan%20%28rev%20A%29.png)\n![other](attachments/plan%20%5Brev%20B%5D.png)',
+  });
+  const refs = await search.findAttachmentRefs(p);
+  assert.ok(refs['plan (rev A).png'], 'parens');
+  assert.ok(refs['plan [rev B].png'], 'brackets');
+});
+
+test('a note using the same attachment ten times counts once', async () => {
+  const search = require('../src/main/services/search');
+  const p = await project('P-dup', {
+    'A.md': Array.from({ length: 10 }, () => '![x](attachments/x.png)').join('\n'),
+  });
+  const refs = await search.findAttachmentRefs(p);
+  assert.deepStrictEqual(refs['x.png'], ['A.md']);
+});
+
+test('an attachment no note mentions is simply absent', async () => {
+  // The board reads "no entry" as "not linked from any note", which is what drives the
+  // Remove unused action — so absence has to mean exactly that and nothing else.
+  const search = require('../src/main/services/search');
+  const p = await project('P-orphan', { 'A.md': 'prose only' });
+  assert.deepStrictEqual(await search.findAttachmentRefs(p), {});
+});
+
+test('angle-bracket and titled link forms are matched', async () => {
+  const search = require('../src/main/services/search');
+  const p = await project('P-forms', {
+    'A.md': '![a](<attachments/angle name.png>)\n![b](attachments/titled.png "A title")',
+  });
+  const refs = await search.findAttachmentRefs(p);
+  assert.ok(refs['angle name.png'], 'angle-bracket form');
+  assert.ok(refs['titled.png'], 'link with a title attribute');
+});
+
+test('a link to something outside attachments/ is ignored', async () => {
+  const search = require('../src/main/services/search');
+  const p = await project('P-ext', {
+    'A.md': '[web](https://example.com/attachments/x.png)\n[note](Other.md)\n![real](attachments/real.png)',
+  });
+  const refs = await search.findAttachmentRefs(p);
+  assert.deepStrictEqual(Object.keys(refs), ['real.png']);
+});

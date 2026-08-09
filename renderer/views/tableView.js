@@ -63,11 +63,31 @@
         draw();
       });
       const filt = pane.querySelector('#tblFilter');
-      filt.oninput = () => { state.filter = filt.value; draw(); restoreFocus(filt); };
+      // Debounced: draw() rebuilds every row, and doing that per keystroke on a folder with a few
+      // hundred projects makes typing lag. The caret position is carried across because the input
+      // is destroyed by the redraw — it used to be forced to the end, so editing the middle of a
+      // filter threw you to the end of it on the next character.
+      filt.oninput = () => {
+        state.filter = filt.value;
+        const caret = filt.selectionStart;
+        redraw(() => restoreFocus(caret));
+      };
       pane.querySelector('#tblCsv').onclick = () => exportCsv(base(libraryPath), cols, projects);
     }
 
-    function restoreFocus(prev) { const el = pane.querySelector('#tblFilter'); if (el) { el.focus(); el.setSelectionRange(prev.value.length, prev.value.length); } }
+    let redrawTimer = null;
+    function redraw(after) {
+      clearTimeout(redrawTimer);
+      redrawTimer = setTimeout(() => { redrawTimer = null; draw(); after?.(); }, 120);
+    }
+
+    function restoreFocus(caret) {
+      const el = pane.querySelector('#tblFilter');
+      if (!el) return;
+      el.focus();
+      const at = Math.min(caret ?? el.value.length, el.value.length);
+      el.setSelectionRange(at, at);
+    }
     draw();
   }
 
@@ -118,7 +138,11 @@
     const head = ['Project', 'Status', ...cols.map((c) => c.label)];
     const lines = [head, ...projects.map((p) => [p.name, statusRank(p) === 0 ? 'complete' : statusRank(p) === 1 ? 'incomplete' : 'not set up', ...cols.map((c) => cellText(c, (p.data || {})[c.key]))])];
     const csv = lines.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    // Excel reads a BOM-less CSV as the system codepage, so a project called "Ashfield Résidence"
+    // or any © / – in a field opens as mojibake. The BOM is the only thing that makes it read
+    // UTF-8. Written as \uFEFF rather than the literal character, which is invisible in an editor
+    // and would not survive the first person who tidied this line.
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
     a.download = `${name}.csv`; a.click(); URL.revokeObjectURL(a.href);
     window.setStatus?.('Exported CSV');
   }

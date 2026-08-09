@@ -27,8 +27,9 @@
           </div>
           <div class="card" style="display:flex;gap:10px;align-items:center;">
             <span class="lib-ico">${I().folderBig}</span>
-            <input id="folderName" value="${escAttr(S().folderName || 'ProjectNotes')}" placeholder="ProjectNotes" style="flex:1;font-family:var(--mono);" />
+            <input id="folderName" value="${escAttr(S().folderName || 'ProjectNotes')}" placeholder="ProjectNotes" style="flex:1;font-family:var(--mono);" aria-describedby="folderNameErr" />
           </div>
+          <div id="folderNameErr" class="field-error" hidden style="margin:6px 0 0;"></div>
 
           <div class="section-label">Where data is stored</div>
           <div id="storeOpts" style="margin-bottom:14px;"></div>
@@ -40,6 +41,13 @@
             </div>
             <button class="btn" id="migrateDataBtn">Copy data in…</button>
           </div>
+
+          <div class="section-label">Note version history</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+            A snapshot is kept before each save, at most once every few minutes. Where they live is
+            separate from where your notes live.
+          </div>
+          <div id="histOpts" style="margin-bottom:32px;"></div>
 
           <div class="section-label">File formats</div>
           <div class="row" style="margin-bottom:32px;align-items:stretch;">
@@ -64,6 +72,7 @@
 
     renderLibList(host);
     renderStoreOpts(host);
+    renderHistoryOpts(host);
     loadCentralRoot(host);      // async: re-renders the cards once the real path is known
 
     host.querySelector('#addPathBtn').onclick = async () => {
@@ -74,8 +83,22 @@
       window.setStatus?.('Added library folder');
     };
     const fn = host.querySelector('#folderName');
+    const fnErr = host.querySelector('#folderNameErr');
     fn.onchange = async () => {
-      S().folderName = fn.value.trim() || 'ProjectNotes';
+      // This name is joined onto every project path in the main process. A separator or a `..`
+      // segment would walk the data folder OUT of the project — outside every folder the path
+      // allowlist knows about. storage.sanitizeFolderName is the enforcement; this is the part
+      // that tells the user, because silently rewriting what they typed is its own bug.
+      const raw = fn.value.trim();
+      const bad = /[\\/:*?"<>|]/.test(raw) || /^\.+$/.test(raw);
+      if (bad) {
+        fnErr.hidden = false;
+        fnErr.textContent = 'A folder name can’t contain \\ / : * ? " < > | or be made only of dots.';
+        fn.value = S().folderName || 'ProjectNotes';
+        return;
+      }
+      fnErr.hidden = true;
+      S().folderName = raw || 'ProjectNotes';
       fn.value = S().folderName;
       await window.Store.saveSettings();
       await window.Store.rescan();
@@ -151,7 +174,8 @@
   let centralRoot = null;
   async function loadCentralRoot(host) {
     try { centralRoot = await window.api.centralRoot(); } catch { centralRoot = null; }
-    if (host?.isConnected) renderStoreOpts(host);
+    // Both card sets print a path derived from it, so both have to be redrawn.
+    if (host?.isConnected) { renderStoreOpts(host); renderHistoryOpts(host); }
   }
 
   function renderStoreOpts(host) {
@@ -192,6 +216,46 @@
     };
   }
 
+  // Where note snapshots live. Kept separate from the storage-mode choice because the trade-off
+  // is a different one: notes want to sit beside the project files, snapshots usually don't —
+  // on a synced drive they're sync traffic and quota for a safety net that belongs to the app.
+  function renderHistoryOpts(host) {
+    const opts = host.querySelector('#histOpts');
+    if (!opts) return;
+    const mode = S().historyLocation || 'central';
+    const folder = S().folderName || 'ProjectNotes';
+    const centralPath = centralRoot ? `${centralRoot}/History/<Project (id)>/` : 'resolving…';
+    opts.innerHTML = `
+      ${optCard('central', mode, 'Central app folder', 'Kept out of your project folders — no sync traffic and no shared-drive quota for snapshots. Recommended when your projects are on OneDrive, SharePoint or a network share.', escHtml(centralPath), 'var(--purple)', 'Recommended')}
+      ${optCard('inproject', mode, 'Beside the notes', 'Travels with the project folder, so copying or archiving a project takes its version history along. Costs sync traffic on every snapshot.', `&lt;project&gt;/${escHtml(folder)}/.history/`, 'var(--accent)')}`;
+
+    opts.querySelectorAll('.store-opt').forEach((el) => {
+      el.onclick = async () => {
+        const next = el.dataset.mode;
+        const prev = S().historyLocation || 'central';
+        if (next === prev) return;
+
+        S().historyLocation = next;
+        if (!await window.Store.saveSettings()) { S().historyLocation = prev; return; }
+        renderHistoryOpts(host);
+        window.setStatus?.('History location: ' + next);
+
+        // Existing snapshots have to follow the setting, or the History panel starts reporting
+        // "no earlier versions" for notes that visibly have some.
+        const paths = window.Store.allProjects().map((p) => p.path);
+        if (!paths.length) return;
+        try {
+          const moved = await window.api.relocateHistory(paths, prev, next);
+          if (moved) window.Toast?.success(`Moved version history for ${moved} note${moved === 1 ? '' : 's'}.`);
+        } catch (err) {
+          window.Toast?.error('History location changed, but the existing snapshots could not be moved: ' + (err.message || err));
+        }
+      };
+    });
+  }
+
+  // Shared by both radio groups. They don't collide because each render scopes its listener
+  // wiring to its own container (#storeOpts / #histOpts) rather than to the class.
   function optCard(value, mode, title, desc, pathStr, color, badge) {
     const active = mode === value;
     return `

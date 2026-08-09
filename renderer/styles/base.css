@@ -14,3 +14,34 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-h); background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 .mono { font-family: var(--mono); }
+
+/* --- keyboard focus ---------------------------------------------------------
+   Inputs used to set `outline: none` on :focus and signal focus with a border
+   colour alone; buttons, tabs, ribbon items and sidebar rails had no focus style
+   at all. Tabbing through the app was invisible.
+
+   :focus-visible rather than :focus, so this shows for keyboard users without
+   ringing every button the mouse touches. Declared once, here, against the same
+   --accent token the rest of the app uses; the per-component `outline: none`
+   rules have been removed rather than overridden, so there is one place to
+   change this.                                                              */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
+/* The editor draws its own caret and selection, and an outline around the whole
+   content area while typing is noise, not information. */
+.cm-content:focus-visible, .cm-editor:focus-visible { outline: none; }
+
+/* --- reduced motion ---------------------------------------------------------
+   Smooth scrolling on heading jumps, the callout fold and the toast slide are
+   all decorative. Respect the OS setting rather than overriding it.          */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

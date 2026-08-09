@@ -14,18 +14,21 @@
     '&': {
       color: 'var(--text-2)',
       backgroundColor: 'transparent',
-      fontFamily: 'var(--mono)',
-      fontSize: '14px',
+      // The three user-settable typography tokens (tokens.css). The reading view reads the same
+      // ones, which is what stops the text reflowing when you toggle between the two.
+      fontFamily: 'var(--editor-font)',
+      fontSize: 'var(--editor-fs)',
+      fontWeight: 'var(--editor-weight)',
       height: '100%',
     },
     '.cm-content': {
       padding: '10px 0 40px',
-      lineHeight: '1.7',
+      lineHeight: 'var(--editor-lh)',
       caretColor: 'var(--accent)',
     },
     '.cm-scroller': {
       fontFamily: 'inherit',
-      lineHeight: '1.7',
+      lineHeight: 'var(--editor-lh)',
       overflow: 'auto',
     },
     '&.cm-focused': { outline: 'none' },
@@ -98,9 +101,10 @@
   const highlight = HighlightStyle.define([
     { tag: t.processingInstruction, color: 'var(--faint)' },
 
-    { tag: t.heading1, color: 'var(--text)', fontWeight: '700', fontSize: '1.5em', lineHeight: '1.4' },
-    { tag: t.heading2, color: 'var(--text)', fontWeight: '700', fontSize: '1.3em', lineHeight: '1.4' },
-    { tag: t.heading3, color: 'var(--text)', fontWeight: '600', fontSize: '1.15em' },
+    // em-relative so they follow --editor-fs, times the same --heading-scale the reading view uses.
+    { tag: t.heading1, color: 'var(--text)', fontWeight: '700', fontSize: 'calc(1.5em * var(--heading-scale))', lineHeight: '1.4' },
+    { tag: t.heading2, color: 'var(--text)', fontWeight: '700', fontSize: 'calc(1.3em * var(--heading-scale))', lineHeight: '1.4' },
+    { tag: t.heading3, color: 'var(--text)', fontWeight: '600', fontSize: 'calc(1.15em * var(--heading-scale))' },
     { tag: [t.heading4, t.heading5, t.heading6], color: 'var(--text)', fontWeight: '600' },
 
     { tag: t.strong, color: 'var(--text)', fontWeight: '700' },

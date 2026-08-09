@@ -16,17 +16,23 @@
     });
   }
 
-  // Save each dropped/pasted File and insert a link at the cursor. Mirrors Attach.insertFromFiles,
-  // which is textarea-shaped; the shared half is everything inside the loop.
+  // Save each dropped/pasted File and insert a link at the cursor. The size check, the base64
+  // read and the image test are shared with editor/attachments.js, which owns everything that
+  // isn't CodeMirror-shaped; the insert is the only part that differs.
   async function insertFiles(view, project, files) {
     for (const file of files) {
+      // Refused before the FileReader runs: reading a 200 MB drawing into a base64 string is
+      // itself the freeze, so the check has to come first, not after.
+      if (window.Attach.tooBig(file)) continue;
       try {
         const base64 = await window.Attach.readAsBase64(file);
         const name = file.name || `pasted-${Date.now()}.png`;
         const rel = await window.api.saveAttachment(project.path, name, base64);
-        const label = rel.split('/').pop();
-        insertAtCursor(view, (window.Attach.isImage(rel) ? `![${label}](${rel})` : `[${label}](${rel})`) + '\n');
-        window.Toast?.success('Attached ' + label);
+        // Attach.markdownLink URL-encodes the target: a filename with a space, a bracket or a
+        // paren produces a link marked won't parse, and the note ends up showing the raw
+        // `![x](attachments/x y.png)` as text.
+        insertAtCursor(view, window.Attach.markdownLink(rel) + '\n');
+        window.Toast?.success('Attached ' + rel.split('/').pop());
       } catch (err) {
         window.Toast?.error('Attach failed: ' + (err.message || err));
       }

@@ -38,15 +38,17 @@
   <!-- BODY -->
   <div id="shell">
     <!-- RIBBON -->
+    <!-- The workspace is the app; everything else is configuration, so it sits at the bottom
+         behind the spacer. Order within the bottom group goes least- to most-global:
+         schema (this library folder) → plugins → storage → settings (the whole app). -->
     <aside id="ribbon">
       <button class="ribbon-btn active" data-page="workspace" title="Workspace" aria-label="Workspace"></button>
+      <div class="ribbon-spacer"></div>
       <button class="ribbon-btn" data-page="schema" title="Schema Editor" aria-label="Schema Editor"></button>
       <button class="ribbon-btn" data-page="plugins" title="Plugins" aria-label="Plugins"></button>
-      <button class="ribbon-btn" data-page="storage" title="Storage" aria-label="Storage"></button>
-      <div class="ribbon-spacer"></div>
+      <button class="ribbon-btn" data-page="storage" title="Storage &amp; Files" aria-label="Storage and files"></button>
+      <button class="ribbon-btn" data-page="settings" title="Settings" aria-label="Settings"></button>
       <button class="ribbon-btn ghost" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
-      <button class="ribbon-btn ghost" data-page="settings" title="Settings" aria-label="Settings"></button>
-      <div class="ribbon-avatar">DL</div>
     </aside>
 
     <!-- PAGE: WORKSPACE -->
@@ -106,6 +108,8 @@
     <section class="page fullpage" id="page-plugins" hidden></section>
     <!-- PAGE: STORAGE -->
     <section class="page fullpage" id="page-storage" hidden></section>
+    <!-- PAGE: SETTINGS (appearance) -->
+    <section class="page fullpage" id="page-settings" hidden></section>
   </div>
 
   <!-- STATUS BAR -->
@@ -173,6 +177,8 @@
   <script src="plugins/pluginBridge.js"></script>
   <script src="plugins/pluginsView.js"></script>
   <script src="views/storageView.js"></script>
+  <!-- After md.js (it renders a live preview) and pluginBridge.js (it rebroadcasts the theme). -->
+  <script src="views/settingsView.js"></script>
   <script src="views/tableView.js"></script>
   <script src="views/quickSwitcher.js"></script>
   <script src="views/historyView.js"></script>
@@ -182,6 +188,8 @@
   <script src="panels/outline.js"></script>
   <script src="panels/outlinks.js"></script>
   <script src="panels/tags.js"></script>
+  <!-- Last on the rail: it's reference material, not something you watch while you work. -->
+  <script src="panels/reference.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

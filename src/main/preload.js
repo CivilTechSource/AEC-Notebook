@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('api', {
   saveAttachment: (p, filename, base64) => ipcRenderer.invoke('attach:save', { path: p, filename, base64 }),
   readAttachment: (p, rel) => ipcRenderer.invoke('attach:read', { path: p, rel }),
   openAttachment: (p, rel) => ipcRenderer.invoke('attach:open', { path: p, rel }),
+  revealAttachment: (p, rel) => ipcRenderer.invoke('attach:reveal', { path: p, rel }),
+  listAttachments: (p) => ipcRenderer.invoke('attach:list', { path: p }),
+  attachmentRefs: (p) => ipcRenderer.invoke('attach:refs', { path: p }),
+  deleteAttachment: (p, rel) => ipcRenderer.invoke('attach:delete', { path: p, rel }),
   openFile: (p) => ipcRenderer.invoke('file:open', { path: p }),
   revealFile: (p) => ipcRenderer.invoke('file:reveal', { path: p }),
 
@@ -57,12 +61,19 @@ contextBridge.exposeInMainWorld('api', {
   // Note version history (restoring goes back through writeNote, so there's no restore channel)
   listSnapshots: (p, name) => ipcRenderer.invoke('history:list', { path: p, name }),
   readSnapshot: (p, name, ts) => ipcRenderer.invoke('history:read', { path: p, name, ts }),
+  // Move existing snapshots when the history location setting changes.
+  relocateHistory: (paths, from, to) => ipcRenderer.invoke('history:relocate', { paths, from, to }),
 
   // Note templates
   listTemplates: () => ipcRenderer.invoke('templates:list'),
   readTemplate: (file) => ipcRenderer.invoke('templates:read', { file }),
   templatesDir: () => ipcRenderer.invoke('templates:dir'),
   openTemplatesDir: () => ipcRenderer.invoke('templates:openDir'),
+
+  // Appearance — the user's own custom.css, read as text and injected (see services/userStyles.js)
+  userCssPath: () => ipcRenderer.invoke('appearance:userCssPath'),
+  readUserCss: () => ipcRenderer.invoke('appearance:readUserCss'),
+  openUserCss: () => ipcRenderer.invoke('appearance:openUserCss'),
 
   // Plugins
   listPlugins: () => ipcRenderer.invoke('plugins:list'),

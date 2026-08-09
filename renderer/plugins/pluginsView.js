@@ -66,6 +66,7 @@
         const next = !e.currentTarget.classList.contains('on');
         e.currentTarget.classList.toggle('on', next);
         await window.PluginBridge.setEnabled(p.id, next);
+        window.updatePluginStatus?.();          // the status bar counts enabled plugins, not installed
         window.setStatus?.(`${p.name} ${next ? 'enabled' : 'disabled'}`);
       };
       list.appendChild(card);

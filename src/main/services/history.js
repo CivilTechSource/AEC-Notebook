@@ -1,15 +1,23 @@
 // history.js — point-in-time snapshots of notes, so an accidental edit is recoverable.
 //
-// Layout: <metaDir>/.history/<note name>/<epoch>.md
+// Two possible layouts, chosen by the `historyLocation` setting:
+//   central (default)  <centralRoot>/History/<Project Name (id)>/<note name>/<epoch>.md
+//   inproject          <metaDir>/.history/<note name>/<epoch>.md
 //
-// That location is load-bearing. It sits BESIDE notes/ rather than inside it, which means every
-// existing scan path excludes it for free:
+// Central is the default because project folders on a shared drive are usually synced. A snapshot
+// every few minutes of editing is then sync traffic and SharePoint quota for something that is a
+// safety net for the app, not a project deliverable. In-project is offered for people who want
+// history to travel with the folder when it's copied or archived.
+//
+// The in-project location is load-bearing where it's used: it sits BESIDE notes/ rather than
+// inside it, which means every existing scan path excludes it for free:
 //   - storage.listNotes reads notes/ only, so snapshots are never listed as notes;
 //   - searchIndex and search.findBacklinks both go through listNotes, so they can't be poisoned;
 //   - watcher.js filters to paths starting "notes/", so writing a snapshot can't wake the watcher
 //     and trigger the write that made it — the loop this design exists to avoid.
 // Putting it under notes/ would have required a separate exclusion in all five places, and
-// missing any one produces phantom notes or a write loop.
+// missing any one produces phantom notes or a write loop. The central location sidesteps all of
+// this by not being under a watched directory at all.
 //
 // Snapshots capture the content BEFORE a write, so the history is "what it used to say".
 const fsp = require('fs/promises');
@@ -30,8 +38,14 @@ function baseName(noteName) {
   return path.basename(String(noteName).endsWith('.md') ? String(noteName) : `${noteName}.md`);
 }
 
+// Resolve for a specific location, so relocate() can address both without touching the setting.
+async function historyRootFor(projectPath, location) {
+  if (location === 'inproject') return path.join(await storage.metaDirFor(projectPath), HISTORY_DIRNAME);
+  return path.join(storage.centralRoot(), 'History', storage.projectFolderName(projectPath));
+}
+
 async function historyRoot(projectPath) {
-  return path.join(await storage.metaDirFor(projectPath), HISTORY_DIRNAME);
+  return historyRootFor(projectPath, await storage.historyLocation());
 }
 
 async function historyDir(projectPath, noteName) {
@@ -136,7 +150,51 @@ async function forget(projectPath, noteName) {
   lastSnapshotAt.delete(path.join(projectPath, baseName(noteName)));
 }
 
+/**
+ * Move a project's snapshots from one location to the other.
+ *
+ * Switching the setting with history already on disk would otherwise orphan it: the versions stay
+ * where they were, the History panel looks at the new place and reports "no earlier versions", and
+ * nothing tells the user their record is still sitting in the old folder.
+ *
+ * Per-note rather than whole-directory, so a target that already holds some history (switched
+ * back and forth) merges instead of failing. An existing note directory at the destination is
+ * left alone — it is the more recent record of the two.
+ *
+ * @returns {Promise<number>} how many note histories moved.
+ */
+async function relocate(projectPath, from, to) {
+  if (from === to) return 0;
+  const src = await historyRootFor(projectPath, from);
+  const dst = await historyRootFor(projectPath, to);
+  if (path.resolve(src) === path.resolve(dst)) return 0;
+
+  let notes = [];
+  try { notes = await fsp.readdir(src); } catch { return 0; }   // nothing recorded here
+  if (!notes.length) return 0;
+
+  await fsp.mkdir(dst, { recursive: true });
+  let moved = 0;
+  for (const note of notes) {
+    const target = path.join(dst, note);
+    try { await fsp.access(target); continue; }                  // already there — don't clobber
+    catch { /* free */ }
+    try { await fsp.rename(path.join(src, note), target); moved += 1; }
+    catch {
+      // Across volumes rename fails with EXDEV; central and in-project really can be on
+      // different drives, which is half the reason the setting exists.
+      try { await fsp.cp(path.join(src, note), target, { recursive: true }); await fsp.rm(path.join(src, note), { recursive: true, force: true }); moved += 1; }
+      catch { /* leave this note's history where it is rather than losing it */ }
+    }
+  }
+  // Only if we emptied it; a partial move must leave the evidence behind.
+  try { await fsp.rmdir(src); } catch { /* not empty, or gone */ }
+  lastSnapshotAt.clear();
+  return moved;
+}
+
 module.exports = {
   HISTORY_DIRNAME, MIN_INTERVAL_MS,
-  historyRoot, historyDir, listSnapshots, readSnapshot, maybeSnapshot, prune, renameHistory, forget,
+  historyRoot, historyRootFor, historyDir, listSnapshots, readSnapshot, maybeSnapshot, prune,
+  renameHistory, forget, relocate,
 };

@@ -84,4 +84,19 @@
   --fs-md: 13px;
   --fs-lg: 16px;
   --fs-xl: 20px;
+
+  /* ---- note typography (user-settable) ----
+     These are the only tokens the Settings page writes to. They are deliberately separate from
+     the --fs-* scale above, which sizes the app's chrome: someone who wants 17px prose in a note
+     does not want a 17px status bar.
+
+     Both halves of the editor read them — the CodeMirror theme (editor/cm/theme.js) and the
+     reading view (editor.css) — so switching between Edit and Reading doesn't reflow the text.
+     The Settings page overrides them on :root at runtime; nothing else should redefine them. */
+  --editor-font: var(--mono);
+  --editor-fs: 14px;
+  --editor-lh: 1.7;
+  --editor-measure: 780px;   /* the column width: prose stops being readable much past this */
+  --heading-scale: 1;        /* multiplies the reading-view heading sizes */
+  --editor-weight: 400;
 }

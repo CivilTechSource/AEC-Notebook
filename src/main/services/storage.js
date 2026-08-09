@@ -85,6 +85,74 @@ async function migrateLegacyRoot() {
 
 async function ensureDir(dir) { await fsp.mkdir(dir, { recursive: true }); }
 
+// OneDrive, SharePoint and Google Drive FS all hold a file open for a moment while they sync it.
+// A write landing in that window fails with EBUSY (Windows) or EPERM (the rename half), and the
+// user sees "Could not save note" for something that would have worked 50 ms later.
+//
+// Only those two codes are retried: ENOSPC, EACCES and friends are real and must surface at once
+// rather than being sat on for half a second first.
+const LOCK_CODES = new Set(['EBUSY', 'EPERM']);
+const RETRY_DELAYS = [50, 150, 400];
+
+async function retryOnLock(fn) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); }
+    catch (err) {
+      if (!LOCK_CODES.has(err.code) || attempt >= RETRY_DELAYS.length) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
+  }
+}
+
+// Every atomic write here is `writeFile(tmp)` then `rename(tmp, file)`. A hard kill between those
+// two — a crash, a forced quit, the machine losing power — strands the temp file, and nothing ever
+// collected them. Observed in the wild: six `window.json.<pid>.<n>.tmp` files in one app folder,
+// one per killed session, because window.json is rewritten on every window move.
+//
+// They are inert (the watcher already ignores `.tmp`), but they accumulate forever and they sit
+// next to the user's notes in in-folder mode, which looks like the app is leaking.
+//
+// Only files matching OUR pattern, and only ones old enough that no live write could own them —
+// a write completes in milliseconds, so an hour is many orders of magnitude of headroom.
+const TEMP_RE = /\.\d+\.\d+\.tmp$/;
+const TEMP_MIN_AGE_MS = 60 * 60 * 1000;
+
+async function sweepStaleTemps(dir, now = Date.now()) {
+  let names = [];
+  try { names = await fsp.readdir(dir); } catch { return 0; }
+  let removed = 0;
+  for (const name of names) {
+    if (!TEMP_RE.test(name)) continue;
+    const file = path.join(dir, name);
+    try {
+      const st = await fsp.stat(file);
+      if (now - st.mtimeMs < TEMP_MIN_AGE_MS) continue;   // could belong to a write in flight
+      await fsp.unlink(file);
+      removed += 1;
+    } catch { /* vanished or locked — it'll be caught next time */ }
+  }
+  if (removed) console.log(`[storage] cleared ${removed} stale temp file(s) in ${dir}`);
+  return removed;
+}
+
+// The app folder name is typed by the user on the Storage page and then joined onto every
+// project path. Left raw, a value like `../..` walks the meta dir OUT of the project folder —
+// and the path allowlist only ever sees the *project* path, not the resolved destination, so
+// notes, project.json and snapshots would land somewhere nothing checked.
+//
+// Sanitised here rather than at the input, because this is the one place every consumer
+// (metaDirFor, metaDirExplicit, folderName, the scanner's skip name) goes through. An empty
+// result falls back to the default: "no folder name" used to mean "write into the project root",
+// which also put a recursive fs.watch over an entire CAD/PDF project tree.
+function sanitizeFolderName(name) {
+  const cleaned = String(name ?? '')
+    .replace(/[\\/:*?"<>|]/g, '')     // separators and the Windows-reserved set
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+$/, '');            // '.', '..', '...' — a traversal segment, not a name
+  return cleaned || DEFAULT_FOLDER;
+}
+
 // ---------- storage settings (cached; refreshed when settings.json is written) ----------
 let _settings = null;
 async function storageSettings(force = false) {
@@ -93,8 +161,11 @@ async function storageSettings(force = false) {
   try { s = JSON.parse(await fsp.readFile(path.join(centralRoot(), 'settings.json'), 'utf8')); } catch { /* defaults */ }
   _settings = {
     storageMode: s.storageMode || 'infolder',
-    folderName: (s.folderName != null ? s.folderName : DEFAULT_FOLDER),
+    folderName: sanitizeFolderName(s.folderName),
     customPath: s.customPath || '',
+    // Where note snapshots live. Central keeps them out of a synced project folder (no sync
+    // traffic, no SharePoint quota); in-project keeps them portable with the project.
+    historyLocation: s.historyLocation === 'inproject' ? 'inproject' : 'central',
   };
   return _settings;
 }
@@ -109,13 +180,26 @@ function projectFolderName(projectPath) {
   return `${sanitizeBase(path.basename(projectPath))} (${shortId(path.resolve(projectPath))})`;
 }
 
+// Containment test, defined here because this is the lowest module in the require order —
+// pathGuard.js re-exports it rather than keeping a second copy that could drift. The `+ sep`
+// is what stops `/lib` matching `/library-secrets`.
+function isInside(parent, child) {
+  const p = path.resolve(parent), c = path.resolve(child);
+  return c === p || c.startsWith(p + path.sep);
+}
+
 async function metaDirFor(projectPath) {
   const s = await storageSettings();
   if (s.storageMode === 'infolder') {
-    return s.folderName ? path.join(projectPath, s.folderName) : projectPath;
+    const dir = path.join(projectPath, s.folderName);
+    // sanitizeFolderName should make this unreachable. It's asserted anyway because the failure
+    // mode is writing the user's notes outside every folder they registered, and a second pair
+    // of eyes on that costs one string comparison per resolve.
+    if (!isInside(projectPath, dir)) throw new Error(`App folder name "${s.folderName}" escapes the project folder`);
+    return dir;
   }
   if (s.storageMode === 'custom' && s.customPath) {
-    return path.join(s.customPath, s.folderName || DEFAULT_FOLDER, 'Projects', projectFolderName(projectPath));
+    return path.join(s.customPath, s.folderName, 'Projects', projectFolderName(projectPath));
   }
   // central
   const dir = path.join(centralRoot(), 'Projects', projectFolderName(projectPath));
@@ -182,13 +266,21 @@ async function writeProject(projectPath, values) {
     await ensureDir(dir);
     const file = path.join(dir, PROJECT_FILE);
     const payload = { values: values || {}, _meta: { path: projectPath, updatedAt: new Date().toISOString() } };
-    markSelfWrite(file);
-    const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
-    await fsp.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8');
-    await fsp.rename(tmp, file);
+    const body = JSON.stringify(payload, null, 2);
+    await retryOnLock(async () => {
+      markSelfWrite(file);          // re-stamped per attempt: the marker window is only 400 ms
+      const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
+      await fsp.writeFile(tmp, body, 'utf8');
+      try { await fsp.rename(tmp, file); }
+      catch (err) { await fsp.unlink(tmp).catch(() => {}); throw err; }   // don't strand a temp file
+    });
     return normalizeProject(payload);
   });
-  _projectChains.set(key, run.catch(() => {}));
+  const settled = run.catch(() => {});
+  _projectChains.set(key, settled);
+  // Drop the entry once this write is the last one outstanding, or the map grows one permanent
+  // key per project touched for the life of the process.
+  settled.then(() => { if (_projectChains.get(key) === settled) _projectChains.delete(key); });
   return run;
 }
 
@@ -221,23 +313,35 @@ async function readNote(projectPath, name) {
 //
 // Chained per note rather than per project: two different notes have no reason to wait on
 // each other, and autosave is on the keystroke path.
+//
+// The chain is keyed on project + note name, NOT on the resolved absolute path, and that is
+// load-bearing. Resolving the path means awaiting metaDirFor, and an await before the chain is
+// registered lets concurrent callers reach the map in a different order than they were called in
+// — so the LAST write did not reliably win. For autosave that's the whole guarantee: a checkbox
+// tick landing between two saves must not resurrect the earlier text.
 const _noteChains = new Map();
-async function writeNote(projectPath, name, content) {
-  const dir = await notesDir(projectPath);
+function writeNote(projectPath, name, content) {
   const safe = path.basename(String(name).endsWith('.md') ? String(name) : `${name}.md`);
-  const file = path.join(dir, safe);
+  const key = `${path.resolve(projectPath)}\u0000${safe}`;
 
-  const prev = _noteChains.get(file) || Promise.resolve();
+  const prev = _noteChains.get(key) || Promise.resolve();
   const run = prev.then(async () => {
+    const dir = await notesDir(projectPath);
+    const file = path.join(dir, safe);
     await ensureDir(dir);
-    markSelfWrite(file);      // so the fs watcher doesn't report our own write as external
-    const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
-    await fsp.writeFile(tmp, content, 'utf8');
-    await fsp.rename(tmp, file);
+    await retryOnLock(async () => {
+      markSelfWrite(file);    // so the fs watcher doesn't report our own write as external
+      const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
+      await fsp.writeFile(tmp, content, 'utf8');
+      try { await fsp.rename(tmp, file); }
+      catch (err) { await fsp.unlink(tmp).catch(() => {}); throw err; }
+    });
     return safe;
   });
   // Keep the chain alive past a failure so one bad write doesn't wedge every later one.
-  _noteChains.set(file, run.catch(() => {}));
+  const settled = run.catch(() => {});
+  _noteChains.set(key, settled);
+  settled.then(() => { if (_noteChains.get(key) === settled) _noteChains.delete(key); });
   return run;
 }
 
@@ -312,25 +416,97 @@ async function uniqueAttachment(dir, filename) {
   }
 }
 
+// Attachments cross IPC as a base64 string, so an uncapped file is a base64 copy in the renderer,
+// another crossing the bridge and a Buffer here — roughly 3.7x the file on the wire. AEC users
+// drag drawings and point-cloud exports, so this is the difference between a refusal and an
+// out-of-memory crash. The renderer checks first (it can name the file and its size); this is the
+// backstop so the cap doesn't live only in the untrusted half.
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+function formatMB(bytes) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+
 // Save a base64 payload into <metaDir>/attachments and return the note-relative path.
 async function saveAttachment(projectPath, filename, base64) {
+  const buf = Buffer.from(String(base64 || ''), 'base64');
+  if (buf.length > MAX_ATTACHMENT_BYTES) {
+    throw new Error(`“${path.basename(String(filename || 'file'))}” is ${formatMB(buf.length)} — attachments are limited to ${formatMB(MAX_ATTACHMENT_BYTES)}. Link to it on the drive instead.`);
+  }
   const dir = await attachmentsDir(projectPath);
   await ensureDir(dir);
-  const name = await uniqueAttachment(dir, filename || 'file');
-  await fsp.writeFile(path.join(dir, name), Buffer.from(base64, 'base64'));
-  return 'attachments/' + name;
+  // 'wx' fails if the file exists. uniqueAttachment checks first, but another save landing between
+  // that check and the write would silently replace the file that got there first — the same
+  // TOCTOU createNote already fixed. Retry rather than overwrite.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const name = await uniqueAttachment(dir, filename || 'file');
+    try {
+      await retryOnLock(() => fsp.writeFile(path.join(dir, name), buf, { flag: 'wx' }));
+      return 'attachments/' + name;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+  }
+  throw new Error(`Could not find a free filename for "${filename}"`);
 }
+
+// A note's link is a URL, not a path: `attachments/site plan.pdf` is written into the markdown as
+// `attachments/site%20plan.pdf`, because marked refuses to parse a link target containing a raw
+// space and leaves the whole thing as literal text. So the filename has to be decoded on the way
+// back before it can be matched against the filesystem.
+//
+// Defensive, because it also has to cope with notes written before links were encoded: a file
+// genuinely named "50% slope.png" produces a raw `%` that decodeURIComponent rejects outright.
+// Falling back to the undecoded string is right — that's exactly what the old link meant.
+function decodeRel(rel) {
+  const s = String(rel ?? '');
+  try { return decodeURIComponent(s); }
+  catch { return s; }
+}
+
+// Strip the link down to a bare filename inside the attachments dir. Decode FIRST: `%2e%2e%2f`
+// is `../` once decoded, and basename has to be the last word on the subject.
+function attachmentName(rel) { return path.basename(decodeRel(rel)); }
 
 // Read an attachment as a data: URL (CSP-safe for <img src>). Path-confined to the attachments dir.
 async function readAttachment(projectPath, rel) {
-  const file = path.join(await attachmentsDir(projectPath), path.basename(String(rel)));
+  const file = path.join(await attachmentsDir(projectPath), attachmentName(rel));
   const buf = await fsp.readFile(file);
   const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
   return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
 async function attachmentAbsPath(projectPath, rel) {
-  return path.join(await attachmentsDir(projectPath), path.basename(String(rel)));
+  return path.join(await attachmentsDir(projectPath), attachmentName(rel));
+}
+
+// ---------- listing and housekeeping ----------
+// Nothing enumerated this folder until now: the app could save an attachment, read one by name and
+// open one, but never tell you what was in there. So a file whose note was deleted stayed on disk
+// with nothing able to surface it — five orphans and 1.2 MB in the first real project checked.
+async function listAttachments(projectPath) {
+  const dir = await attachmentsDir(projectPath);
+  let names = [];
+  try { names = await fsp.readdir(dir); }
+  catch (err) { if (err.code === 'ENOENT') return []; throw err; }
+
+  const out = [];
+  for (const name of names) {
+    try {
+      const st = await fsp.stat(path.join(dir, name));
+      if (!st.isFile()) continue;                    // no folders masquerading as attachments
+      out.push({ name, size: st.size, mtime: st.mtimeMs });
+    } catch { /* vanished between readdir and stat */ }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Deleting is undoable, and the undo goes back through saveAttachment rather than a restore
+// channel of its own — the same reasoning as note history restoring through writeNote. Removing
+// the file frees the name, so the restore lands on it again and the note's link still resolves.
+async function deleteAttachment(projectPath, rel) {
+  const file = path.join(await attachmentsDir(projectPath), attachmentName(rel));
+  try { await fsp.unlink(file); }
+  catch (err) { if (err.code !== 'ENOENT') throw err; }
+  return true;
 }
 
 // ---------- app config (settings/library/schemas) — always in centralRoot ----------
@@ -370,10 +546,14 @@ async function writeConfig(filename, data) {
   const run = _writeChain.then(async () => {
     await ensureDir(centralRoot());
     const file = path.join(centralRoot(), filename);
-    const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
-    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-    try { await fsp.copyFile(file, `${file}.bak`); } catch { /* no previous version yet */ }
-    await fsp.rename(tmp, file);
+    const body = JSON.stringify(data, null, 2);
+    await retryOnLock(async () => {
+      const tmp = `${file}.${process.pid}.${++_tmpSeq}.tmp`;
+      await fsp.writeFile(tmp, body, 'utf8');
+      try { await fsp.copyFile(file, `${file}.bak`); } catch { /* no previous version yet */ }
+      try { await fsp.rename(tmp, file); }
+      catch (err) { await fsp.unlink(tmp).catch(() => {}); throw err; }
+    });
   });
   // Keep the chain alive for the next writer even if this one rejects.
   _writeChain = run.catch(() => {});
@@ -382,12 +562,15 @@ async function writeConfig(filename, data) {
   return true;
 }
 
-async function folderName() { return (await storageSettings()).folderName || DEFAULT_FOLDER; }
+async function folderName() { return (await storageSettings()).folderName; }
+async function historyLocation() { return (await storageSettings()).historyLocation; }
+async function storageMode() { return (await storageSettings()).storageMode; }
 
 // ---------- opt-in migration (COPY data from other locations into the current one) ----------
 function metaDirExplicit(projectPath, s) {
-  if (s.storageMode === 'infolder') return s.folderName ? path.join(projectPath, s.folderName) : projectPath;
-  if (s.storageMode === 'custom' && s.customPath) return path.join(s.customPath, s.folderName || DEFAULT_FOLDER, 'Projects', projectFolderName(projectPath));
+  const folder = sanitizeFolderName(s.folderName);
+  if (s.storageMode === 'infolder') return path.join(projectPath, folder);
+  if (s.storageMode === 'custom' && s.customPath) return path.join(s.customPath, folder, 'Projects', projectFolderName(projectPath));
   return path.join(centralRoot(), 'Projects', projectFolderName(projectPath));
 }
 
@@ -437,12 +620,20 @@ async function migrateAllInto(projectPaths) {
 
 module.exports = {
   DEFAULT_FOLDER,
+  MAX_ATTACHMENT_BYTES,
   centralRoot,
   migrateLegacyRoot,
   metaDirFor,
   normalizeProject,
   hasProjectData,
   folderName,
+  historyLocation,
+  storageMode,
+  projectFolderName,
+  sanitizeFolderName,
+  isInside,
+  retryOnLock,
+  sweepStaleTemps,
   readProject,
   writeProject,
   listNotes,
@@ -454,6 +645,9 @@ module.exports = {
   saveAttachment,
   readAttachment,
   attachmentAbsPath,
+  attachmentName,
+  listAttachments,
+  deleteAttachment,
   migrateAllInto,
   readConfig,
   writeConfig,

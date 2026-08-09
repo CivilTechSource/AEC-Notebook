@@ -29,21 +29,36 @@ function newIndex() {
   });
 }
 
+const noteId = (projectPath, noteName) => `n:${projectPath}:${noteName}`;
+const projectId = (projectPath) => `p:${projectPath}`;
+
+function noteDoc(p, f, body) {
+  return {
+    id: noteId(p.path, f), type: 'note', projectPath: p.path, projectName: p.name, noteName: f,
+    title: f.replace(/\.md$/, ''), body, fields: '', tags: extractTags(body).join(' '),
+  };
+}
+
+function projectDoc(p, fieldsText) {
+  return {
+    id: projectId(p.path), type: 'project', projectPath: p.path, projectName: p.name, noteName: '',
+    title: p.name, body: '', fields: fieldsText, tags: '',
+  };
+}
+
 async function docsForProject(p) {
   const docs = [];
   try {
     const rec = await storage.readProject(p.path);
     const fieldsText = rec ? Object.entries(rec.values || {}).map(([k, v]) => `${k}: ${valStr(v)}`).join('\n') : '';
-    const id = 'p:' + p.path;
-    docs.push({ id, type: 'project', projectPath: p.path, projectName: p.name, noteName: '', title: p.name, body: '', fields: fieldsText, tags: '' });
-    docBody.set(id, fieldsText);
+    docs.push(projectDoc(p, fieldsText));
+    docBody.set(projectId(p.path), fieldsText);
   } catch { /* ignore */ }
   try {
     for (const f of await storage.listNotes(p.path)) {
-      const id = 'n:' + p.path + ':' + f;
       let body = ''; try { body = await storage.readNote(p.path, f); } catch { /* ignore */ }
-      docs.push({ id, type: 'note', projectPath: p.path, projectName: p.name, noteName: f, title: f.replace(/\.md$/, ''), body, fields: '', tags: extractTags(body).join(' ') });
-      docBody.set(id, body);
+      docs.push(noteDoc(p, f, body));
+      docBody.set(noteId(p.path, f), body);
     }
   } catch { /* ignore */ }
   return docs;
@@ -52,17 +67,79 @@ async function docsForProject(p) {
 async function build(projects) {
   mini = newIndex();
   docBody.clear();
+  dirtyDocs.clear();
   for (const p of projects || []) mini.addAll(await docsForProject(p));
   builtSig = sig(projects);
   stale = false;
 }
 
-async function ensureIndex(projects) {
-  if (!mini || sig(projects) !== builtSig || stale) await build(projects);
+// ---------- staying current without rebuilding everything ----------
+//
+// Every note write, rename, delete and watcher event used to call invalidate(), and the next
+// query re-read EVERY note in EVERY project from disk. On local disk that's a slow sweep; on
+// OneDrive Files On-Demand placeholders it's a download, and it fails outright when you're
+// offline — which is exactly when you're on site and most want your notes.
+//
+// So changes are recorded per document and applied at query time: one file read for one edit,
+// instead of thousands. `stale` survives for the cases that genuinely invalidate everything
+// (a storage-mode change, an unknown edit).
+const dirtyDocs = new Map();   // doc id -> { projectPath, noteName|null }
+
+function invalidate() { stale = true; }
+
+// A single note changed on disk (written, renamed away from, deleted, or edited externally).
+function invalidateNote(projectPath, noteName) {
+  if (!projectPath || !noteName) return invalidate();
+  dirtyDocs.set(noteId(projectPath, noteName), { projectPath, noteName });
 }
 
-// Mark the index out of date; the next query rebuilds it (cheap because searches are occasional).
-function invalidate() { stale = true; }
+// A project's field values changed; its notes are untouched.
+function invalidateProject(projectPath) {
+  if (!projectPath) return invalidate();
+  dirtyDocs.set(projectId(projectPath), { projectPath, noteName: null });
+}
+
+// Re-read just the documents marked dirty and swap them in. A document whose file is gone is
+// discarded; one that didn't exist before is added.
+async function applyDirty(projects) {
+  if (!dirtyDocs.size) return;
+  const byPath = new Map((projects || []).map((p) => [p.path, p]));
+  const pending = [...dirtyDocs.entries()];
+  dirtyDocs.clear();
+
+  for (const [id, { projectPath, noteName }] of pending) {
+    const p = byPath.get(projectPath);
+    if (!p) continue;                       // project no longer in scope; the next build drops it
+    let doc = null;
+    try {
+      if (noteName) {
+        // listNotes rather than a bare read: readNote returns '' for a missing file, which would
+        // leave a deleted note in the index as an empty document that still matches its title.
+        const exists = (await storage.listNotes(projectPath)).includes(noteName);
+        if (exists) doc = noteDoc(p, noteName, await storage.readNote(projectPath, noteName));
+      } else {
+        const rec = await storage.readProject(projectPath);
+        const fieldsText = rec ? Object.entries(rec.values || {}).map(([k, v]) => `${k}: ${valStr(v)}`).join('\n') : '';
+        doc = projectDoc(p, fieldsText);
+      }
+    } catch {
+      stale = true;                         // couldn't read it — fall back to a full rebuild
+      continue;
+    }
+    // discard + add rather than replace: replace() throws on an id the index doesn't hold, and a
+    // dirty doc may be one that didn't exist before. MiniSearch auto-vacuums discarded ids, so a
+    // long editing session doesn't accumulate tombstones.
+    if (mini.has(id)) mini.discard(id);
+    docBody.delete(id);
+    if (doc) { mini.add(doc); docBody.set(id, doc.type === 'note' ? doc.body : doc.fields); }
+  }
+}
+
+async function ensureIndex(projects) {
+  if (!mini || sig(projects) !== builtSig || stale) { await build(projects); return; }
+  await applyDirty(projects);
+  if (stale) await build(projects);         // applyDirty gave up on something — rebuild after all
+}
 
 function makeSnippet(body, term) {
   const i = body.toLowerCase().indexOf(String(term || '').toLowerCase());
@@ -91,4 +168,4 @@ async function query(q, projects) {
   });
 }
 
-module.exports = { query, invalidate };
+module.exports = { query, invalidate, invalidateNote, invalidateProject };

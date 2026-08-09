@@ -116,7 +116,6 @@
     tabEl.tabIndex = 0;                       // reachable by keyboard
     tabEl.innerHTML = `<span class="pin" title="Pinned">📌</span><span class="tab-ico" aria-hidden="true">${icon || ''}</span><span class="ttl"></span><button class="close" aria-label="Close tab" title="Close">✕</button>`;
     tabEl.querySelector('.ttl').textContent = title;
-    tabEl._getId = () => id; // updated on rebind via closure swap below
 
     const tab = { id, title, icon, render, pinned, context: context || null, tabEl, paneEl: null, group };
     tabEl._tab = tab;
@@ -249,7 +248,10 @@
     targetGroup.stripEl.insertBefore(tab.tabEl, beforeEl);
     if (tab.paneEl.parentElement !== targetGroup.panesEl) targetGroup.panesEl.appendChild(tab.paneEl);
     tab.group = targetGroup;
-    rebuildOrder(src); if (src !== targetGroup) rebuildOrder(targetGroup); else rebuildOrder(targetGroup);
+    // Both strips are re-read from the DOM: the source lost a tab, the target gained one. When
+    // they're the same group that's one call, which is why this isn't branched.
+    rebuildOrder(src);
+    if (src !== targetGroup) rebuildOrder(targetGroup);
 
     if (src !== targetGroup && src.activeId === id) { const last = src.tabs[src.tabs.length - 1]; src.activeId = last ? last.id : null; if (last) activate(src, last.id); }
     activeGroup = targetGroup;

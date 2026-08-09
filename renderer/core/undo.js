@@ -17,7 +17,13 @@
 
   async function apply(item) {
     const i = stack.indexOf(item);
-    if (i < 0) return;                 // already undone
+    // Either already undone, or pushed off the end of the 50-item stack. Both used to return
+    // silently — the user clicks Undo on an old toast and nothing at all happens, which is the
+    // exact failure mode the rest of this codebase goes out of its way to avoid.
+    if (i < 0) {
+      window.Toast?.info(`“${item.label}” can no longer be undone.`);
+      return;
+    }
     stack.splice(i, 1);
     try { await item.undoFn(); window.Toast?.success('Undone: ' + item.label); }
     catch (e) { window.Toast?.error('Undo failed: ' + (e.message || e)); }

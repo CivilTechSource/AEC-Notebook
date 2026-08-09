@@ -80,8 +80,11 @@
       if (!backdrop) return;                      // closed while loading
 
       const current = getCurrent();
-      const rows = window.Diff.collapse(window.Diff.diffLines(old, current));
-      const stats = window.Diff.summarise(window.Diff.diffLines(old, current));
+      // One diff, two consumers. This ran diffLines twice over the same pair of texts, which on a
+      // long note is the whole cost of opening the panel paid twice.
+      const changes = window.Diff.diffLines(old, current);
+      const rows = window.Diff.collapse(changes);
+      const stats = window.Diff.summarise(changes);
 
       const head = `
         <div class="hist-diff-head">

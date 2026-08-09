@@ -6,10 +6,14 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test \"test/**/*.test.js\"",
+    "test": "node --test",
     "vendor": "node scripts/vendor.js",
+    "prebuild": "npm test",
     "build": "electron-builder",
-    "dist": "electron-builder"
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:dir": "electron-builder --dir"
   },
   "keywords": [
     "electron",
@@ -32,37 +36,6 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "electron": "^43.0.0",
-    "electron-builder": "^26.15.3",
-    "esbuild": "^0.28.1"
-  },
-  "build": {
-    "appId": "com.civilteachsource.aec-notebook",
-    "productName": "AEC Notebook",
-    "icon": "icon.png",
-    "files": [
-      "src/**/*",
-      "renderer/**/*",
-      "plugins/**/*"
-    ],
-    "asarUnpack": [
-      "plugins/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.productivity"
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "category": "Office"
-    }
-  },
-  "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-javascript": "^6.2.5",
@@ -78,10 +51,83 @@
     "@codemirror/view": "^6.43.7",
     "@lezer/highlight": "^1.2.3",
     "dompurify": "^3.4.13",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "katex": "^0.18.1",
     "marked": "^18.0.5",
     "mermaid": "^11.16.0",
-    "minisearch": "^7.2.0",
     "prismjs": "^1.30.0"
+  },
+  "build": {
+    "appId": "com.civilteachsource.aec-notebook",
+    "productName": "AEC Notebook",
+    "copyright": "Copyright © 2026 Civil Teach Source Group Limited",
+    "icon": "icon.png",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "plugins/**/*",
+      "LICENSE"
+    ],
+    "asarUnpack": [
+      "plugins/**/*"
+    ],
+    "npmRebuild": false,
+    "publish": null,
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null,
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "${productName} ${version}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AEC Notebook",
+      "uninstallDisplayName": "AEC Notebook ${version}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "Civil Teach Source Group Limited <ferdijafar.engineering@gmail.com>",
+      "synopsis": "A desktop notebook for AEC project folders",
+      "desktop": {
+        "entry": {
+          "Name": "AEC Notebook",
+          "Comment": "Schema-driven project metadata and markdown notes, stored beside your project files",
+          "Keywords": "notes;markdown;aec;engineering;projects;"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "minisearch": "^7.2.0"
   }
 }

@@ -18,13 +18,26 @@ function trackedWrite(projectPath, promise) {
 }
 
 // Hold the quit until every pending write settles, then let it through.
+//
+// Looped rather than a single allSettled: quitting starts writes of its own (the window's `close`
+// handler saves window.json, the renderer's beforeunload flushes note autosaves and session.json),
+// and those land AFTER a one-shot snapshot was taken. The cap stops a pathological writer —
+// something re-arming on every settle — from holding the app open forever.
+const MAX_DRAIN_PASSES = 10;
+
+async function drain() {
+  for (let pass = 0; pass < MAX_DRAIN_PASSES && inFlight.size; pass++) {
+    await Promise.allSettled([...inFlight]);
+  }
+}
+
 function drainOnQuit(app) {
   let draining = false;
   app.on('before-quit', (e) => {
     if (draining || inFlight.size === 0) return;
     e.preventDefault();
     draining = true;
-    Promise.allSettled([...inFlight]).then(() => app.quit());
+    drain().then(() => app.quit());
   });
 }
 

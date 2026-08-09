@@ -53,7 +53,11 @@ project fields you've granted them. A broken plugin can't take the app down.
 
 **Plus:** a tabbed workspace with split panes and session restore · full-text search and a
 `Ctrl/Cmd+P` quick switcher · a spreadsheet-style table view of every project in a folder,
-exportable to CSV · light and dark themes.
+exportable to CSV · version history for every note · light and dark themes, with font, size,
+spacing, column width and accent colour all adjustable — and a `custom.css` for anything else.
+
+Not sure of the syntax? The **Syntax & shortcuts** pane on the right lists all of it, and clicking
+a snippet copies it.
 
 ## Download
 

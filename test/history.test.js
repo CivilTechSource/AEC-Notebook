@@ -207,3 +207,90 @@ test('CRITICAL: the history directory is outside notes/', async () => {
   const notes = path.join(await storage.metaDirFor(p), 'notes');
   assert.ok(!dir.startsWith(notes + path.sep), `${dir} must not be inside ${notes}`);
 });
+
+// ---------- where snapshots live ----------
+//
+// The location is a setting because the trade-off is real either way: central keeps snapshots out
+// of a synced project folder (no sync traffic, no SharePoint quota for a safety net that belongs
+// to the app), in-project keeps them travelling with the folder when it's copied or archived.
+
+async function setHistoryLocation(location) {
+  await storage.writeConfig('settings.json', { storageMode: 'infolder', folderName: 'ProjectNotes', historyLocation: location });
+}
+
+test('central is the default, so snapshots do not land in the project folder', async () => {
+  await storage.writeConfig('settings.json', { storageMode: 'infolder', folderName: 'ProjectNotes' });
+  const p = await projectWith('body');
+  const root = await history.historyRoot(p);
+  assert.ok(!storage.isInside(p, root), `${root} should not be inside ${p}`);
+  assert.ok(storage.isInside(storage.centralRoot(), root), 'it belongs under the central root');
+});
+
+test('the in-project location sits beside notes/, not inside it', async () => {
+  await setHistoryLocation('inproject');
+  const p = await projectWith('body');
+  const root = await history.historyRoot(p);
+  const meta = await storage.metaDirFor(p);
+  assert.strictEqual(path.resolve(root), path.resolve(meta, '.history'));
+  assert.ok(!storage.isInside(path.join(meta, 'notes'), root), 'must not be under notes/ — listNotes would show it');
+  await setHistoryLocation('central');
+});
+
+test('two projects with the same folder name keep separate central histories', async () => {
+  await setHistoryLocation('central');
+  const a = await projectWith('a');
+  const b = await projectWith('b');
+  // Distinct temp parents, same basename would still be distinct because the id hashes the path.
+  assert.notStrictEqual(await history.historyRoot(a), await history.historyRoot(b));
+});
+
+test('switching the location moves existing snapshots with it', async () => {
+  await setHistoryLocation('inproject');
+  const p = await projectWith('first version');
+  const ts = await history.maybeSnapshot(p, 'Report.md');
+  assert.ok(ts, 'precondition: a snapshot exists');
+  assert.strictEqual((await history.listSnapshots(p, 'Report.md')).length, 1);
+
+  await setHistoryLocation('central');
+  // Before relocating, the new location knows nothing about it — this is the orphaning the
+  // relocate step exists to prevent.
+  assert.deepStrictEqual(await history.listSnapshots(p, 'Report.md'), []);
+
+  const moved = await history.relocate(p, 'inproject', 'central');
+  assert.strictEqual(moved, 1);
+
+  const snaps = await history.listSnapshots(p, 'Report.md');
+  assert.strictEqual(snaps.length, 1, 'the version is visible again at the new location');
+  assert.strictEqual(await history.readSnapshot(p, 'Report.md', snaps[0].ts), 'first version');
+
+  // And it is no longer in the old place.
+  const oldRoot = await history.historyRootFor(p, 'inproject');
+  await assert.rejects(() => fsp.access(path.join(oldRoot, 'Report.md')));
+});
+
+test('relocating is a no-op when there is nothing to move', async () => {
+  await setHistoryLocation('central');
+  const p = await projectWith('body');
+  assert.strictEqual(await history.relocate(p, 'inproject', 'central'), 0);
+  assert.strictEqual(await history.relocate(p, 'central', 'central'), 0);
+});
+
+test('relocating does not clobber a history already at the destination', async () => {
+  // Switch back and forth and both sides can hold versions of the same note. The destination copy
+  // is the more recent record, so it wins.
+  await setHistoryLocation('central');
+  const p = await projectWith('central version');
+  await history.maybeSnapshot(p, 'Report.md');
+  const centralSnaps = await history.listSnapshots(p, 'Report.md');
+  assert.strictEqual(centralSnaps.length, 1);
+
+  // Plant a competing in-project history for the same note.
+  const inProjectRoot = await history.historyRootFor(p, 'inproject');
+  await fsp.mkdir(path.join(inProjectRoot, 'Report.md'), { recursive: true });
+  await fsp.writeFile(path.join(inProjectRoot, 'Report.md', '1700000000000.md'), 'older in-project copy', 'utf8');
+
+  assert.strictEqual(await history.relocate(p, 'inproject', 'central'), 0, 'nothing moved — the destination was occupied');
+  const after = await history.listSnapshots(p, 'Report.md');
+  assert.strictEqual(after.length, 1);
+  assert.strictEqual(await history.readSnapshot(p, 'Report.md', after[0].ts), 'central version', 'the destination copy survived');
+});

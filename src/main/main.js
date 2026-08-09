@@ -109,6 +109,9 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     // One-time move of pre-1.0 data from the hardcoded macOS path (see storage.centralRoot).
     await storage.migrateLegacyRoot().catch((e) => console.log(`[storage] ${e.message}`));
+    // Collect temp files stranded by a previous crash or forced quit. Fire-and-forget: this is
+    // tidying, and it must never delay the window appearing.
+    storage.sweepStaleTemps(storage.centralRoot()).catch(() => {});
 
     registerPluginProtocol();
     ipc.registerAll({ appRoot: APP_ROOT });
@@ -118,7 +121,12 @@ if (!gotLock) {
 
     // Tell the renderer when project data changes on disk outside the app.
     watcher.onChange((change) => {
-      searchIndex.invalidate();
+      // The watcher already knows exactly what changed, so tell the index that rather than
+      // throwing the whole thing away — an external edit to one note shouldn't cost a re-read of
+      // every note in every project the next time the quick switcher opens.
+      if (change.kind === 'note' && change.noteName) searchIndex.invalidateNote(change.projectPath, change.noteName);
+      else if (change.kind === 'project') searchIndex.invalidateProject(change.projectPath);
+      else searchIndex.invalidate();
       if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('fs:changed', change);
     });
     app.on('activate', async () => {

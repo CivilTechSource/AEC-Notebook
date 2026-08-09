@@ -10,6 +10,11 @@ build/
 builder-debug.yml
 builder-effective-config.yaml
 
+# Working notes kept at the repo root during development — not part of the project.
+HANDOFF.md
+CODE-REVIEW.md
+UI Test.md
+
 # Archives
 *.zip
 

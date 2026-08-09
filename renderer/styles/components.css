@@ -19,6 +19,12 @@
 
 /* ---------- collapsible section ---------- */
 .section { margin-bottom: 10px; }
+/* A section header that carries actions puts them beside the collapse button rather than inside
+   it — nested interactive elements are invalid and unreachable by keyboard. The row hover follows
+   the collapse button so the affordance still reads as "click the header". */
+.section-head-row { display: flex; align-items: center; gap: 6px; }
+.section-head-row .section-head { flex: 1; min-width: 0; }
+.section-head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .section-head { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 7px; width: 100%; text-align: left; }
 .section-head:hover { background: var(--hover); }
 .section-head .chev { display: flex; color: var(--muted); transition: transform .12s; flex: none; }
@@ -48,7 +54,9 @@ input, select, textarea {
   width: 100%; background: var(--bg-dark); border: 1px solid var(--line-3); color: var(--text);
   border-radius: 7px; padding: 8px 11px; font: inherit; font-size: 13px;
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+/* The accent border is the mouse-focus affordance; the keyboard ring comes from
+   the :focus-visible rule in base.css and is deliberately not suppressed here. */
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 textarea { resize: vertical; min-height: 80px; }
 .field-error { color: var(--red); font-size: 11.5px; margin-top: 5px; display: flex; align-items: center; gap: 6px; }
 .highlight-red input, .highlight-red select, .highlight-red textarea {

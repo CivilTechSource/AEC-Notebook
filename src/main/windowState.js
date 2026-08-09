@@ -5,6 +5,7 @@
 // monitor routinely point somewhere no display exists any more. Restoring those blind opens the
 // window off-screen with no way to drag it back — fitToDisplays() is what prevents that.
 const storage = require('./services/storage');
+const { tracked } = require('./writeTracker');
 
 const FILE = 'window.json';
 const DEFAULTS = { width: 1440, height: 920 };
@@ -58,7 +59,9 @@ function track(win) {
     // getNormalBounds() is the un-maximised geometry, which is what we want to restore to when
     // the user un-maximises later. getBounds() would record the full screen.
     const payload = { bounds: win.getNormalBounds(), maximized: win.isMaximized() };
-    storage.writeConfig(FILE, payload).catch(() => { /* a lost window position isn't worth a toast */ });
+    // tracked(): the `close` save below fires during quit, so without this the process can exit
+    // before the bytes land and the window reopens where it was two sessions ago.
+    tracked(storage.writeConfig(FILE, payload)).catch(() => { /* a lost window position isn't worth a toast */ });
   };
   const schedule = () => { clearTimeout(timer); timer = setTimeout(save, 400); };
 

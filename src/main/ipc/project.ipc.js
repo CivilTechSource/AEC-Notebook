@@ -10,9 +10,10 @@ const { trackedWrite } = require('../writeTracker');
 
 function register() {
   ipcMain.handle('project:read', guarded((_e, { path: p }) => storage.readProject(p)));
-  ipcMain.handle('project:write', guarded((_e, { path: p, data }) => {
-    searchIndex.invalidate();
-    return trackedWrite(p, storage.writeProject(p, data));
+  ipcMain.handle('project:write', guarded(async (_e, { path: p, data }) => {
+    const rec = await trackedWrite(p, storage.writeProject(p, data));
+    searchIndex.invalidateProject(p);   // the field values changed; this project's notes did not
+    return rec;
   }));
 
   // Scanning + migration (roots go through the same allowlist as project paths)
@@ -29,7 +30,9 @@ function register() {
 
   ipcMain.handle('data:migrateInto', async (_e, { paths }) => {
     for (const p of paths || []) await assertAllowed(p);
-    return storage.migrateAllInto(paths);
+    const n = await storage.migrateAllInto(paths);
+    if (n) searchIndex.invalidate();      // whole projects' worth of notes just appeared
+    return n;
   });
 }
 

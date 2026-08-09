@@ -25,9 +25,11 @@
     schema: () => window.SchemaEditor.render($('#page-schema')),
     plugins: () => window.PluginsView.render($('#page-plugins')),
     storage: () => window.StorageView.render($('#page-storage')),
+    settings: () => window.SettingsView.render($('#page-settings')),
   };
   function showPage(page) {
-    if (page === 'settings') page = 'storage';
+    // 'settings' used to alias 'storage', so the ribbon carried two buttons that opened the same
+    // page. Settings is now appearance — where data lives stays on Storage.
     // Clicking Workspace while already on it — and with the panel hidden — brings it back.
     // Without this the collapse button would be a one-way door.
     if (page === 'workspace' && !$('#page-workspace').hidden && leftCollapsed) setLeftCollapsed(false);
@@ -104,7 +106,9 @@
       toSide: !!opts.toSide,
       // No note here, but the Tags pane is project-scoped and still has something to show.
       context: { kind: 'project', project },
-      render: (pane) => window.ProjectBoard.render(pane, project),
+      // `tab` is passed through so the board can register a destroy hook and flush its pending
+      // field autosave — see ProjectBoard.render.
+      render: (pane, tab) => window.ProjectBoard.render(pane, project, tab),
     });
     $('#statusMid').textContent = project.name + ' · main';
   }
@@ -247,9 +251,12 @@
       // exactly the boundary we want: CodeMirror's own history owns Ctrl+Z inside the editor,
       // app-level undo (destructive actions: deleted notes, fields, sections) owns it everywhere
       // else. Don't narrow this check to INPUT/TEXTAREA without replacing that split.
+      // Ctrl/Cmd+P is the exception: it opens a modal over whatever you were doing rather than
+      // stealing your text, so blocking it inside the editor just made the app's main navigation
+      // unreachable from the place you spend most of your time. Obsidian allows it too.
+      if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); window.QuickSwitcher.open(); return; }
       if (editing) return;
       if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); focusSearch(); }            // filter project list
-      else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); window.QuickSwitcher.open(); } // quick switcher / search
       else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); window.Undo.run(); } // app-level undo
     });
 
@@ -276,9 +283,12 @@
       splitDir: window.Tabs.getSplitDir(),
     };
   }
-  const saveSession = debounce(() => {
-    window.api.writeConfig('session.json', { tabs: window.Tabs.serialize(), layout: currentLayout() }).catch(() => {});
-  }, 600);
+  const writeSession = () => window.api.writeConfig('session.json', { tabs: window.Tabs.serialize(), layout: currentLayout() }).catch(() => {});
+  const saveSession = debounce(writeSession, 600);
+  // Quitting inside the 600 ms window dropped the layout change that triggered it — open a tab,
+  // close the app, and the tab wasn't there next time. Tabs.flushAll already runs on beforeunload
+  // for the same reason; this is the session's half of it.
+  window.addEventListener('beforeunload', () => { saveSession.cancel(); writeSession(); });
 
   function applyLayout(l) {
     if (!l) return;
@@ -335,13 +345,26 @@
     }
     if (activeId) window.Tabs.focus(activeId);
   }
-  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+  function debounce(fn, ms) {
+    let t = null;
+    const f = (...a) => { clearTimeout(t); t = setTimeout(() => { t = null; fn(...a); }, ms); };
+    f.cancel = () => { clearTimeout(t); t = null; };
+    return f;
+  }
 
   function setRibbonIcon(page, svg) { const b = document.querySelector(`.ribbon-btn[data-page="${page}"]`); if (b) b.innerHTML = svg; }
 
+  // "N plugins active" counted everything INSTALLED, so disabling one changed nothing in the
+  // status bar — the one place that claims to tell you what's running.
   async function updatePluginStatus() {
-    try { const plugins = await window.api.listPlugins(); $('#statusPlugins').textContent = plugins.length + (plugins.length === 1 ? ' plugin' : ' plugins') + ' active'; } catch { /* noop */ }
+    try {
+      const plugins = await window.api.listPlugins();
+      const enabled = await window.PluginBridge.getEnabled();
+      const n = plugins.filter((p) => enabled[p.id] !== false).length;   // absent means enabled
+      $('#statusPlugins').textContent = `${n} ${n === 1 ? 'plugin' : 'plugins'} active`;
+    } catch { /* noop */ }
   }
+  window.updatePluginStatus = updatePluginStatus;   // the Plugins page re-runs it after a toggle
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
   async function boot() {
@@ -349,6 +372,11 @@
     window.FsWatch.start();          // react to project data changed outside the app
     await window.Store.loadConfig();
     applyTheme(window.Store.state.settings.theme);
+    // Appearance before the first note paints, or the editor renders at the default size and
+    // visibly jumps. The user stylesheet is deliberately not awaited — it's cosmetic, and a slow
+    // or missing file must not hold up the app.
+    window.SettingsView.apply();
+    window.SettingsView.loadUserCss().catch(() => {});
     await window.Store.rescan();
     renderProjectPanel();
     updatePluginStatus();

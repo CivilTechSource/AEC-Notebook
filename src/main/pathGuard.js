@@ -8,10 +8,10 @@ const storage = require('./services/storage');
 
 const pickedPaths = new Set();      // paths the user chose via a native dialog
 
-function isInside(parent, child) {
-  const p = path.resolve(parent), c = path.resolve(child);
-  return c === p || c.startsWith(p + path.sep);
-}
+// Defined in storage.js — it's the lowest module in the require order, and metaDirFor needs the
+// same test to prove the app folder name hasn't walked out of the project. One definition, so the
+// two containment checks can't drift apart.
+const { isInside } = storage;
 
 // The user consented to this exact path by choosing it in a native dialog.
 function addPickedPath(p) { pickedPaths.add(path.resolve(p)); }

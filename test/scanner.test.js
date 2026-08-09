@@ -68,3 +68,141 @@ test('migrateMoved reconciles a project folder that moved, without rewriting on 
   await scanner.migrateMoved(newPath);
   assert.strictEqual((await storage.readProject(newPath)).meta.updatedAt, before);
 });
+
+// ---------- re-homing out-of-folder data when a project moves ----------
+//
+// In central/custom mode the data directory is keyed on sha1(absolute project path). Renaming or
+// moving a project folder changes that key, so every note vanished from the app while sitting
+// safely on disk under the old hash. migrateMoved can't help — it reads through the NEW key, which
+// is empty. The only surviving link is _meta.path inside project.json.
+
+async function useCentralMode() {
+  const storage = require('../src/main/services/storage');
+  await storage.writeConfig('settings.json', { storageMode: 'central', folderName: 'ProjectNotes' });
+  require('../src/main/services/scanner').invalidateOrphans();
+}
+
+async function useInFolderMode() {
+  const storage = require('../src/main/services/storage');
+  await storage.writeConfig('settings.json', { storageMode: 'infolder', folderName: 'ProjectNotes' });
+  require('../src/main/services/scanner').invalidateOrphans();
+}
+
+test('central-mode data follows a project folder RENAMED in place', async () => {
+  const storage = require('../src/main/services/storage');
+  const scanner = require('../src/main/services/scanner');
+  await useCentralMode();
+
+  const root = await library(['Riverside Depot']);
+  const before = path.join(root, 'Riverside Depot');
+  await storage.writeProject(before, { client: 'Thames Water' });
+  await storage.writeNote(before, 'Site visit.md', 'headwall is scoured');
+
+  // Renamed in Explorer: same parent, different name.
+  const after = path.join(root, 'Riverside Depot (archived)');
+  await fsp.rename(before, after);
+  assert.strictEqual(await storage.readProject(after), null, 'precondition: the new hash key is empty');
+
+  scanner.invalidateOrphans();
+  assert.strictEqual(await scanner.rehomeOutOfFolder(after), true);
+
+  const rec = await storage.readProject(after);
+  assert.ok(rec, 'project.json is readable at the new location');
+  assert.strictEqual(rec.values.client, 'Thames Water');
+  assert.deepStrictEqual(await storage.listNotes(after), ['Site visit.md'], 'and the notes came too');
+
+  await useInFolderMode();
+});
+
+test('central-mode data follows a project folder MOVED to another parent', async () => {
+  const storage = require('../src/main/services/storage');
+  const scanner = require('../src/main/services/scanner');
+  await useCentralMode();
+
+  const from = await library(['Weir Refurbishment']);
+  const to = await library([]);
+  const before = path.join(from, 'Weir Refurbishment');
+  await storage.writeProject(before, { stage: 'RIBA 4' });
+  await storage.writeNote(before, 'Inspection.md', 'scour to the left abutment');
+
+  // Dragged into an archive folder: same name, different parent.
+  const after = path.join(to, 'Weir Refurbishment');
+  await fsp.rename(before, after);
+  assert.strictEqual(await storage.readProject(after), null, 'precondition: the new hash key is empty');
+
+  scanner.invalidateOrphans();
+  assert.strictEqual(await scanner.rehomeOutOfFolder(after), true);
+  assert.strictEqual((await storage.readProject(after)).values.stage, 'RIBA 4');
+  assert.deepStrictEqual(await storage.listNotes(after), ['Inspection.md']);
+
+  await useInFolderMode();
+});
+
+test('scanRootWithData reports a re-homed project as set up, not as new', async () => {
+  // scanRoot decides hasMetadata before any re-homing has happened, so without the follow-up the
+  // reconnected project still showed "not set up" until the next rescan.
+  const storage = require('../src/main/services/storage');
+  const scanner = require('../src/main/services/scanner');
+  await useCentralMode();
+
+  const root = await library(['Pumping Station']);
+  const before = path.join(root, 'Pumping Station');
+  await storage.writeProject(before, { client: 'Anglian' });
+  const after = path.join(root, 'Pumping Station A');
+  await fsp.rename(before, after);
+
+  scanner.invalidateOrphans();
+  const found = await scanner.scanRootWithData(root, 1);
+  const entry = found.find((f) => f.path === after);
+  assert.ok(entry, 'the folder is still scanned');
+  assert.strictEqual(entry.hasMetadata, true, 'and reported as configured');
+  assert.strictEqual(entry.values.client, 'Anglian');
+
+  await useInFolderMode();
+});
+
+test('re-homing refuses to guess when two orphans could match', async () => {
+  const storage = require('../src/main/services/storage');
+  const scanner = require('../src/main/services/scanner');
+  await useCentralMode();
+
+  // Two different projects that happen to share a folder name, both moved away.
+  const rootA = await library(['Bridge 12']);
+  const rootB = await library(['Bridge 12']);
+  await storage.writeProject(path.join(rootA, 'Bridge 12'), { client: 'A' });
+  await storage.writeProject(path.join(rootB, 'Bridge 12'), { client: 'B' });
+  await fsp.rm(path.join(rootA, 'Bridge 12'), { recursive: true, force: true });
+  await fsp.rm(path.join(rootB, 'Bridge 12'), { recursive: true, force: true });
+
+  const rootC = await library(['Bridge 12']);
+  const target = path.join(rootC, 'Bridge 12');
+
+  scanner.invalidateOrphans();
+  assert.strictEqual(await scanner.rehomeOutOfFolder(target), false, 'ambiguous — must not pick one');
+  assert.strictEqual(await storage.readProject(target), null, 'and must not have written anything');
+
+  await useInFolderMode();
+});
+
+test('re-homing leaves a project alone when its data is already in place', async () => {
+  const storage = require('../src/main/services/storage');
+  const scanner = require('../src/main/services/scanner');
+  await useCentralMode();
+
+  const root = await library(['Culvert Survey']);
+  const p = path.join(root, 'Culvert Survey');
+  await storage.writeProject(p, { client: 'Severn Trent' });
+
+  scanner.invalidateOrphans();
+  assert.strictEqual(await scanner.rehomeOutOfFolder(p), false, 'nothing to do');
+  assert.strictEqual((await storage.readProject(p)).values.client, 'Severn Trent');
+
+  await useInFolderMode();
+});
+
+test('re-homing is a no-op in in-folder mode, where data moves with the folder anyway', async () => {
+  const scanner = require('../src/main/services/scanner');
+  await useInFolderMode();
+  const root = await library(['Anything']);
+  assert.strictEqual(await scanner.rehomeOutOfFolder(path.join(root, 'Anything')), false);
+});

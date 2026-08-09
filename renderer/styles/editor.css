@@ -9,20 +9,21 @@
    its content. That existed because a textarea can't participate in flex sizing sensibly;
    CodeMirror can, so the workaround is gone. */
 .tabpanes > .pane:has(> .note-editor) { display: flex; flex-direction: column; height: 100%; }
-.note-editor { max-width: 780px; width: 100%; margin: 0 auto; padding: 28px 44px 0; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.note-editor { max-width: var(--editor-measure); width: 100%; margin: 0 auto; padding: 28px 44px 0; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .note-meta { font-size: 11px; color: var(--muted-2); margin-bottom: 14px; }
 .note-title {
   width: 100%; background: transparent; border: none; padding: 0 0 6px;
   font-size: 30px; font-weight: 700; color: var(--text); letter-spacing: -.4px;
 }
-.note-title:focus { outline: none; }
+/* The title is a borderless input, so it has nothing to show focus with except the
+   ring from base.css. Pulled in tight so it reads as an underline, not a box. */
+.note-title:focus-visible { outline-offset: 0; }
 .note-title::placeholder { color: var(--faint); }
 /* Host for the CodeMirror view. Sizing only — everything visual is in editor/cm/theme.js, which
    is written against the same CSS variables so it follows the light/dark switch. */
 .note-body { flex: 1; min-height: 0; display: flex; }
 .note-body[hidden] { display: none; }        /* display:flex would otherwise beat the attribute */
 .note-body .cm-editor { flex: 1; min-height: 0; }
-.note-body:focus { outline: none; }
 .note-foot { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted-2); }
 
 /* ---------- note topbar + mode toggle ---------- */
@@ -70,9 +71,17 @@
 .seg-btn.active { background: var(--accent); color: #fff; }
 
 /* ---------- rendered markdown (reading view) ---------- */
-.note-reading { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 40px; font-size: 14px; line-height: 1.7; color: var(--text-2); }
-.note-reading h1, .note-reading h2, .note-reading h3 { color: var(--text); font-weight: 600; margin: 1.2em 0 .5em; line-height: 1.3; }
-.note-reading h1 { font-size: 24px; } .note-reading h2 { font-size: 19px; } .note-reading h3 { font-size: 16px; }
+/* Font, size and leading come from the user-settable tokens, and the CodeMirror theme reads the
+   same three — that's what keeps Edit and Reading from reflowing against each other. */
+.note-reading { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 40px; font-family: var(--editor-font); font-size: var(--editor-fs); font-weight: var(--editor-weight); line-height: var(--editor-lh); color: var(--text-2); }
+.note-reading h1, .note-reading h2, .note-reading h3, .note-reading h4, .note-reading h5, .note-reading h6 { color: var(--text); font-weight: 600; margin: 1.2em 0 .5em; line-height: 1.3; }
+/* calc() off the body size so headings track it, then --heading-scale tunes the contrast between
+   levels without touching the body size. */
+.note-reading h1 { font-size: calc(var(--editor-fs) * 1.7 * var(--heading-scale)); }
+.note-reading h2 { font-size: calc(var(--editor-fs) * 1.36 * var(--heading-scale)); }
+.note-reading h3 { font-size: calc(var(--editor-fs) * 1.15 * var(--heading-scale)); }
+.note-reading h4 { font-size: calc(var(--editor-fs) * 1.02 * var(--heading-scale)); }
+.note-reading h5, .note-reading h6 { font-size: var(--editor-fs); color: var(--text-2); }
 .note-reading p { margin: 0 0 12px; }
 .note-reading a { color: var(--accent); text-decoration: none; }
 .note-reading a:hover { text-decoration: underline; }

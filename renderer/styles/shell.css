@@ -63,14 +63,15 @@
   content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px;
   width: 3px; border-radius: 3px; background: var(--accent);
 }
+/* Pushes the configuration group to the bottom of the bar. */
 .ribbon-spacer { flex: 1; }
-.ribbon-avatar {
-  width: 28px; height: 28px; border-radius: 50%; margin-top: 4px;
-  background: linear-gradient(135deg, #6a8b6f, #4a6b56);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600; color: #fff;
+/* A hairline above the bottom group, so it reads as a separate set rather than a long list. */
+.ribbon-spacer + .ribbon-btn { margin-top: 4px; }
+.ribbon-spacer + .ribbon-btn::after {
+  content: ''; position: absolute; left: 6px; right: 6px; top: -5px;
+  height: 1px; background: var(--line);
 }
-#themeToggle { font-size: 16px; }
+#themeToggle { font-size: 16px; margin-top: 4px; }
 
 /* ---------- PAGES ---------- */
 .page { flex: 1; display: flex; min-width: 0; }
@@ -113,7 +114,7 @@
   font-size: 12px;
 }
 .panel-search input::placeholder { color: var(--faint); }
-.panel-search input:focus { outline: none; border-color: var(--accent); }
+.panel-search input:focus { border-color: var(--accent); }
 
 #projectGroups { flex: 1; overflow-y: auto; padding: 2px 6px 8px; }
 
@@ -318,3 +319,29 @@
 .status-left, .status-right { display: flex; align-items: center; gap: 16px; white-space: nowrap; }
 .si { display: flex; align-items: center; gap: 6px; }
 .si-dot { width: 7px; height: 7px; border-radius: 50%; border: 1.2px solid #fff; }
+
+/* ---------- reference pane (syntax & shortcuts) ---------- */
+.ref-group { border-bottom: 1px solid var(--line); }
+.ref-group:last-child { border-bottom: none; }
+.ref-head {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left;
+  padding: var(--sp-2) 10px; color: var(--text-3); font-size: 12px; font-weight: 600;
+  border-radius: var(--radius-sm);
+}
+.ref-head:hover { background: var(--hover); color: var(--text); }
+.ref-chev { display: flex; color: var(--muted-2); transform: rotate(-90deg); transition: transform .12s; }
+.ref-group.open .ref-chev { transform: none; }
+.ref-body { display: none; padding: 2px 0 var(--sp-3); }
+.ref-group.open .ref-body { display: block; }
+.ref-row { display: flex; align-items: baseline; gap: var(--sp-3); padding: 3px 10px; }
+.ref-what { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--muted); }
+/* The snippet is the payload, so it gets the emphasis and the whole width it needs; the label
+   wraps instead. Click-to-copy, hence the pointer and the flash. */
+.ref-how {
+  font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  background: var(--bg-card); border: 1px solid var(--line-2); border-radius: var(--radius-sm);
+  padding: 1px 6px; cursor: pointer; white-space: nowrap; flex: none; max-width: 62%;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ref-how:hover { border-color: var(--line-4); color: var(--text); }
+.ref-how.copied { background: var(--green-tint); border-color: var(--green-line); color: var(--green); }

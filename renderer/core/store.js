@@ -14,7 +14,9 @@
   const listeners = new Set();
 
   const state = {
-    settings: { storageMode: 'infolder', folderName: 'ProjectNotes', customPath: '', theme: 'dark' }, // 'infolder' | 'central' | 'custom'
+    // storageMode: 'infolder' | 'central' | 'custom'  — where notes and project.json live.
+    // historyLocation: 'central' | 'inproject'        — where note snapshots live, independently.
+    settings: { storageMode: 'infolder', folderName: 'ProjectNotes', customPath: '', historyLocation: 'central', theme: 'dark' },
     schemas: {},                               // { [schemaId]: schema }
     libraryPaths: [],                          // [{ path, collapsed, depth, schemaId }]
     groups: [],                                // [{ path, collapsed, projects:[{name,path,libraryPath,data,hasMetadata}] }]
@@ -86,6 +88,23 @@
       if (!lp.schemaId) { lp.schemaId = uid('sch_'); migrated = true; }
       if (!state.schemas[lp.schemaId]) state.schemas[lp.schemaId] = emptySchema();
     }
+
+    // Collect schemas nothing points at. The byPath migration above mints a fresh id for a schema
+    // whose library path is no longer registered, and removeLibraryPath drops the path but not the
+    // schema — so schemas.json grew a little every time either happened, invisibly.
+    //
+    // Only ever when schemas.json read cleanly: with a failed read, state.schemas is empty and
+    // "unreferenced" would describe every schema the user has.
+    if (!loadFailed.has('schemas.json') && !loadFailed.has('library.json')) {
+      const live = new Set(state.libraryPaths.map((lp) => lp.schemaId));
+      const orphans = Object.keys(state.schemas).filter((id) => !live.has(id));
+      if (orphans.length) {
+        for (const id of orphans) delete state.schemas[id];
+        migrated = true;
+        console.log(`[store] dropped ${orphans.length} schema(s) no library folder references`);
+      }
+    }
+
     if (migrated && !loadFailed.has('schemas.json')) { await saveLibrary(); await saveSchemas(); }
     emit();
   }

@@ -3,6 +3,29 @@
 (function () {
   function noteId(project, name) { return `note:${project.path}:${name}`; }
 
+  /**
+   * What to do when the watcher says this note changed on disk.
+   *
+   * Pulled out as a pure function because getting it wrong is invisible in one direction and
+   * infuriating in the other: too eager and the user is asked to arbitrate their own autosave;
+   * too lax and someone else's edit is silently overwritten.
+   *
+   *   'ignore' — the file already agrees with us, or holds exactly what we last wrote
+   *   'reload' — the file moved on and we have nothing unsaved to lose
+   *   'ask'    — the file moved on AND we have unsaved edits; only the user can choose
+   *
+   * @param {{disk:string, buffer:string, lastWritten:string, dirty:boolean}} s
+   */
+  function reconcile({ disk, buffer, lastWritten, dirty }) {
+    if (disk === buffer) return 'ignore';
+    // Identity by CONTENT, not by timing. watcher.js suppresses our own writes with a 400 ms
+    // marker, which cannot cover a sync client (OneDrive, SharePoint) touching the file seconds
+    // after we wrote it. Without this, a single user typing in a single note is asked to resolve
+    // a conflict against themselves — and a dialog raised that often stops being read.
+    if (disk === lastWritten) return 'ignore';
+    return dirty ? 'ask' : 'reload';
+  }
+
   function open(project, name, opts = {}) {
     window.Tabs.open({
       id: noteId(project, name), title: name.replace(/\.md$/, ''), icon: window.ICON.note,
@@ -22,6 +45,9 @@
     // Set by the editor's onChange, cleared once the buffer matches disk. Declared up here
     // because onChange is wired at editor construction, before the reload logic below.
     let dirty = false;
+    // The exact text this tab last put on disk. This is what tells our own writes apart from a
+    // real external edit, and it has to be CONTENT rather than a timestamp — see onExternal.
+    let lastWritten = content;
 
     pane.innerHTML = `
       <div class="note-editor">
@@ -70,8 +96,15 @@
     const flash = (m) => { statusEl.textContent = m; statusEl.style.color = 'var(--green)'; clearTimeout(flash._t); flash._t = setTimeout(() => { if (statusEl.isConnected) statusEl.textContent = ''; }, 1200); };
 
     const saveBody = debounce(async () => {
-      try { await window.api.writeNote(project.path, state.name, editor.getValue()); }
+      const written = editor.getValue();
+      try { await window.api.writeNote(project.path, state.name, written); }
       catch (err) { window.Toast?.error('Could not save note: ' + err.message); return; }
+      lastWritten = written;
+      // `dirty` used to be set on the first keystroke and never cleared, so once you had typed in
+      // a note ANY later external edit claimed you had unsaved work and demanded a choice. Only
+      // clear it if the buffer hasn't moved on during the await — keystrokes landing mid-write
+      // really are unsaved.
+      if (editor.isConnected() && editor.getValue() === written) dirty = false;
       flash('saved'); window.setStatus?.('Saved ' + state.name);
     }, 500);
     // The outline and outgoing-links panes read the live buffer, so they need to know it changed.
@@ -145,8 +178,10 @@
       // re-measure once it's back on screen or the first screenful renders at the wrong height.
       if (!reading) requestAnimationFrame(() => editor.view.requestMeasure());
       if (reading) {
-        saveBody.flush?.();
-        try { await window.api.writeNote(project.path, state.name, editor.getValue()); } catch { /* toast already */ }
+        // Flush a pending autosave, but don't write unconditionally: this used to rewrite the
+        // file on EVERY toggle, which on a synced drive is pointless sync traffic and drives a
+        // version snapshot for a note that hasn't changed.
+        if (dirty) saveBody.flush();
         readEl.innerHTML = window.MD.render(editor.getValue());
         // Callouts, code highlighting, maths, diagrams, embeds and live checkboxes. getBody/
         // setBody are what let a ticked checkbox write back into this buffer.
@@ -174,6 +209,16 @@
     pane.querySelectorAll('.seg-btn').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
     setMode(state.mode);
 
+    // Dropping a file on the reading view did nothing at all — no attachment, no message, and the
+    // file wasn't opened by the OS either, so it read as the app being broken. An attachment needs
+    // a cursor to be inserted at and the reading view has none, so say what to do instead.
+    readEl.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); });
+    readEl.addEventListener('drop', (e) => {
+      if (![...(e.dataTransfer?.files || [])].length) return;
+      e.preventDefault();
+      window.Toast?.info('Switch to Edit mode to attach a file — it drops in at the cursor.');
+    });
+
     // ----- sidebar context -----
     // Jumping to a heading still belongs here, because only this knows which of the two views is
     // on screen. The editing half is now one call — the mirror-measuring arithmetic the textarea
@@ -199,7 +244,11 @@
         editor.setValue(text);
         dirty = true;
         updateWords(); announceBody();
-        saveBody.flush();                       // write it straight away, don't wait out the debounce
+        // setValue is programmatic and deliberately doesn't fire onChange, so nothing has queued a
+        // save — queue one, THEN flush it. Flushing alone wrote nothing unless the user happened
+        // to have typed earlier in the session, so a restore looked like it worked and was gone
+        // again at next open.
+        saveBody(); saveBody.flush();
         if (state.mode === 'reading') setMode('reading');
       });
     };
@@ -222,6 +271,7 @@
     const loadFromDisk = (disk, message) => {
       editor.setValue(disk);
       dirty = false;
+      lastWritten = disk;          // the buffer and the file agree again
       updateWords();
       announceBody();
       if (state.mode === 'reading') setMode('reading');
@@ -233,15 +283,21 @@
       if (!editor.isConnected()) return;
       let disk = '';
       try { disk = await window.api.readNote(project.path, state.name); } catch { return; }
-      if (disk === editor.getValue()) { dirty = false; return; }
-      if (!dirty) { loadFromDisk(disk, 'reloaded from disk'); return; }
+
+      const action = reconcile({ disk, buffer: editor.getValue(), lastWritten, dirty });
+      if (action === 'ignore') { if (disk === editor.getValue()) dirty = false; return; }
+      if (action === 'reload') { loadFromDisk(disk, 'reloaded from disk'); return; }
+
       const keepMine = await window.Modal.confirm({
         title: 'This note changed on disk',
         body: `“${state.name}” was edited outside the app while you had unsaved changes. Keep your version, or discard it and load the one on disk?`,
         okText: 'Keep mine',
         cancelText: 'Load from disk',
       });
-      if (keepMine) saveBody.flush();
+      // "Keep mine" has to actually put mine on disk. Flushing alone only wrote if a save
+      // happened to be pending — and by the time the dialog is answered the debounce has usually
+      // fired, so the external version was quietly left in place.
+      if (keepMine) { saveBody(); saveBody.flush(); }
       else loadFromDisk(disk, 'loaded from disk');
     };
     // Anchored to the editor's own DOM, so the subscription drops when the tab closes.
@@ -284,13 +340,26 @@
     });
   }
 
+  // flush() runs the pending call, if there is one, and then there isn't one any more.
+  //
+  // It used to keep `lastArgs` after firing, so every later flush re-ran the last save whether or
+  // not anything was waiting — and rename, History and the destroy hook all call it. That meant a
+  // note could be written three times over for one edit, each write a snapshot candidate.
   function debounce(fn, ms) {
-    let t, lastArgs;
-    const f = (...a) => { lastArgs = a; clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-    f.flush = () => { clearTimeout(t); if (lastArgs) fn(...lastArgs); };
+    let t = null, lastArgs = null;
+    const f = (...a) => { lastArgs = a; clearTimeout(t); t = setTimeout(() => { t = null; lastArgs = null; fn(...a); }, ms); };
+    f.flush = () => {
+      if (!t) return;
+      clearTimeout(t); t = null;
+      const a = lastArgs; lastArgs = null;
+      fn(...a);
+    };
+    f.pending = () => !!t;
     return f;
   }
 
   // Exposed so other views can find (and close) the tab holding a given note.
-  window.NotesView = { open, idFor: noteId };
+  // `reconcile` is exported for tests — it's the only pure decision in here, and the expensive
+  // one to get wrong.
+  window.NotesView = { open, idFor: noteId, reconcile };
 })();

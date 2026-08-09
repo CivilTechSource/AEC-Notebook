@@ -10,10 +10,14 @@
   // Registry of mounted boards so we can re-render on schema change.
   const mounted = new Set(); // { project, paneEl, editMode }
 
-  function render(pane, project) {
+  function render(pane, project, tab) {
     let entry = [...mounted].find((m) => m.paneEl === pane);
     if (!entry) { entry = { project, paneEl: pane, editMode: false }; mounted.add(entry); }
     entry.project = project;
+    // The field autosave is debounced by 400 ms. Closing the tab, opening another project into it
+    // (Tabs.rebind) or quitting inside that window used to drop the last edit with no warning —
+    // notes have had this hook since the textarea days; boards never did.
+    if (tab) window.Tabs.setDestroyHook(tab.id, () => getPersist(entry).flush());
     draw(entry);
   }
 
@@ -73,6 +77,9 @@
 
     // notes section
     host.appendChild(notesSection(entry, project));
+
+    // attachments section
+    host.appendChild(attachmentsSection(entry, project));
 
     // plugin board-section contributions (sandboxed)
     if (window.PluginBridge) window.PluginBridge.renderBoardSections(host, project, schema);
@@ -187,7 +194,7 @@
         pick.onclick = async () => { const p = await window.api.pickFile(); if (p) { control.value = p; openBtn.style.display = ''; commit(entry, field, p, wrap); } };
         row.appendChild(pick); row.appendChild(openBtn);
         wrap.appendChild(control); wrap.appendChild(row);
-        attachValidation(wrap, control, field, () => commit(entry, field, control.value, wrap));
+        control.addEventListener('change', () => commit(entry, field, control.value, wrap));
         return wrap;
       }
       default: control = el('input'); control.type = 'text'; control.value = val ?? '';
@@ -230,23 +237,24 @@
       err.innerHTML = I().warn + ' ' + escHtml(result.error);
     } else if (err) err.remove();
   }
-  function attachValidation(wrap, control, field, onChange) {
-    control.addEventListener('change', onChange);
-  }
-
   // ---------- notes (Obsidian-style list) ----------
   function notesSection(entry, project) {
     const block = document.createElement('div');
     block.className = 'section';
+    // The two actions sit BESIDE the collapse button, not inside it. They used to be <span
+    // class="btn"> nested within <button class="section-head">, which is invalid HTML — nested
+    // interactive content is unreachable by keyboard, and the clicks only worked at all because
+    // of a closest() check on the parent's handler.
     block.innerHTML = `
-      <button class="section-head"><span class="chev">${I().chevDown}</span><span class="s-title">Notes</span><span class="s-count" id="noteCount">0</span><span class="s-spacer"></span>
-        <span class="btn ghost" id="templateBtn" title="New note from a template" style="height:24px;padding:0 8px;">${I().template || ''} Template</span>
-        <span class="btn ghost" id="newNoteBtn" title="New note" style="height:24px;padding:0 8px;">${I().plus} New</span></button>
+      <div class="section-head-row">
+        <button class="section-head"><span class="chev">${I().chevDown}</span><span class="s-title">Notes</span><span class="s-count" id="noteCount">0</span></button>
+        <div class="section-head-actions">
+          <button class="btn ghost" id="templateBtn" title="New note from a template" style="height:24px;padding:0 8px;">${I().template || ''} Template</button>
+          <button class="btn ghost" id="newNoteBtn" title="New note" style="height:24px;padding:0 8px;">${I().plus} New</button>
+        </div>
+      </div>
       <div class="section-body" style="display:block;"><div class="note-list" id="boardNotes"></div></div>`;
-    block.querySelector('.section-head').onclick = (e) => {
-      if (e.target.closest('#newNoteBtn') || e.target.closest('#templateBtn')) return;
-      block.classList.toggle('collapsed');
-    };
+    block.querySelector('.section-head').onclick = () => block.classList.toggle('collapsed');
     block.querySelector('#newNoteBtn').onclick = async (e) => {
       e.stopPropagation();
       const name = await window.api.createNote(project.path, 'Untitled');
@@ -340,6 +348,189 @@
       row.querySelector('[data-a="side"]').onclick = (e) => { e.stopPropagation(); window.NotesView.open(project, name, { toSide: true }); };
       row.addEventListener('contextmenu', (e) => { e.preventDefault(); noteMenu(e, project, name, block); });
       host.appendChild(row);
+    });
+  }
+
+  // ---------- attachments ----------
+  //
+  // Files dropped into notes land in <metaDir>/attachments and, until this section existed, were
+  // visible ONLY inside whichever note happened to link to them. Nothing enumerated the folder, so
+  // a file whose note was deleted stayed on disk with no way to notice it — the first real project
+  // checked had five orphans and 1.2 MB of them.
+  //
+  // The reference scan reads every note in the project, so it's cached per project and dropped on
+  // any fs change. Same shape as panels/tags.js, which caches for exactly the same reason.
+  const refsCache = new Map();      // projectPath -> { name: [noteName, …] }
+
+  function invalidateRefs(projectPath) { refsCache.delete(projectPath); }
+  window.FsWatch?.subscribe((change) => { if (change?.projectPath) invalidateRefs(change.projectPath); });
+
+  async function attachmentRefs(projectPath) {
+    if (!refsCache.has(projectPath)) {
+      try { refsCache.set(projectPath, await window.api.attachmentRefs(projectPath)); }
+      catch { return {}; }          // treat as unknown, never as "nothing is linked"
+    }
+    return refsCache.get(projectPath);
+  }
+
+  function fileSize(bytes) {
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${bytes} B`;
+  }
+
+  function attachIcon(name) {
+    if (window.Attach.isImage(name)) return I().image;
+    if (/\.pdf$/i.test(name)) return I().pdf;
+    // ICON.doc, not `file`: that key exists only in FIELD_ICON, and reaching for the missing one
+    // interpolates the string "undefined" into the row rather than throwing. test/icons.test.js
+    // now catches that.
+    return I().doc;
+  }
+
+  function attachmentsSection(entry, project) {
+    const block = document.createElement('div');
+    block.className = 'section';
+    block.innerHTML = `
+      <div class="section-head-row">
+        <button class="section-head"><span class="chev">${I().chevDown}</span><span class="s-title">Attachments</span><span class="s-count" id="attachCount">0</span><span class="s-done" id="attachSize"></span></button>
+        <div class="section-head-actions">
+          <button class="btn ghost" id="attachTidy" title="Delete the attachments no note links to" style="height:24px;padding:0 8px;" hidden></button>
+        </div>
+      </div>
+      <div class="section-body" style="display:block;"><div class="note-list" id="boardAttachments"></div></div>`;
+    block.querySelector('.section-head').onclick = () => block.classList.toggle('collapsed');
+    renderAttachments(block, project);
+    return block;
+  }
+
+  async function renderAttachments(block, project) {
+    const host = block.querySelector('#boardAttachments');
+    let files = [];
+    try { files = await window.api.listAttachments(project.path); }
+    catch (err) { host.innerHTML = `<div class="empty-hint" style="text-align:left;padding:6px 0;font-size:12px;">Could not read attachments: ${escHtml(err.message || err)}</div>`; return; }
+
+    const refs = await attachmentRefs(project.path);
+    if (!block.isConnected) return;                       // board redrawn while we were reading
+
+    block.querySelector('#attachCount').textContent = files.length;
+    block.querySelector('#attachSize').textContent = files.length ? fileSize(files.reduce((n, f) => n + f.size, 0)) : '';
+
+    const orphans = files.filter((f) => !(refs[f.name] || []).length);
+    const tidy = block.querySelector('#attachTidy');
+    tidy.hidden = orphans.length === 0;
+    tidy.textContent = `Remove ${orphans.length} unused`;
+    tidy.onclick = (e) => { e.stopPropagation(); removeUnreferenced(block, project, orphans); };
+
+    if (!files.length) {
+      host.innerHTML = `<div class="empty-hint" style="text-align:left;padding:6px 0;font-size:12px;">
+        No attachments yet. Drag a file into a note, or paste one.</div>`;
+      return;
+    }
+
+    host.innerHTML = '';
+    for (const f of files) {
+      const used = refs[f.name] || [];
+      const row = document.createElement('div');
+      row.className = 'note-row attach-row';
+      row.innerHTML = `<span class="nr-ico">${attachIcon(f.name)}</span>
+        <span class="pinfo"><span class="nr-name"></span><span class="at-meta"></span></span>
+        <button class="nr-act" data-a="copy" title="Copy the markdown link">⧉</button>
+        <button class="nr-act" data-a="reveal" title="Show in file manager">⌕</button>
+        <button class="nr-act danger" data-a="del" title="Delete this attachment">✕</button>`;
+      row.querySelector('.nr-name').textContent = f.name;
+
+      const meta = row.querySelector('.at-meta');
+      if (used.length) {
+        meta.textContent = `${fileSize(f.size)} · linked from ${used.length === 1 ? used[0].replace(/\.md$/, '') : `${used.length} notes`}`;
+      } else {
+        meta.textContent = `${fileSize(f.size)} · not linked from any note`;
+        meta.classList.add('at-orphan');
+      }
+
+      row.onclick = () => window.api.openAttachment(project.path, f.name);
+      row.querySelector('[data-a="copy"]').onclick = async (e) => {
+        e.stopPropagation();
+        // Through the same builder the editor uses, so a pasted link is an encoded, working one.
+        await navigator.clipboard.writeText(window.Attach.markdownLink('attachments/' + f.name));
+        window.setStatus?.('Markdown link copied');
+      };
+      row.querySelector('[data-a="reveal"]').onclick = (e) => {
+        e.stopPropagation();
+        window.api.revealAttachment(project.path, f.name).catch(() => {});
+      };
+      row.querySelector('[data-a="del"]').onclick = (e) => { e.stopPropagation(); deleteAttachment(block, project, f, used); };
+      host.appendChild(row);
+    }
+  }
+
+  // Undo restores through saveAttachment — deleting frees the name, so it comes back on the same
+  // filename and any link to it still resolves. Same reasoning as note history restoring through
+  // writeNote rather than a restore channel of its own.
+  async function captureBytes(project, name) {
+    const url = await window.api.readAttachment(project.path, name);
+    return url.slice(url.indexOf(',') + 1);
+  }
+
+  async function deleteAttachment(block, project, file, used) {
+    const ok = await window.Modal.confirm({
+      title: `Delete “${file.name}”?`,
+      body: used.length
+        ? `${used.length} note${used.length === 1 ? '' : 's'} still link to it (${used.map((n) => n.replace(/\.md$/, '')).join(', ')}). Those links will stop working.`
+        : 'No note links to it. This can be undone.',
+      okText: 'Delete', danger: true,
+    });
+    if (!ok) return;
+
+    let base64 = null;
+    try { base64 = await captureBytes(project, file.name); }
+    catch { /* unreadable — the delete can still go ahead, it just won't be undoable */ }
+
+    try { await window.api.deleteAttachment(project.path, file.name); }
+    catch (err) { window.Toast?.error('Could not delete: ' + (err.message || err)); return; }
+
+    invalidateRefs(project.path);
+    window.Attach.forget(project.path);
+    await renderAttachments(block, project);
+
+    if (!base64) { window.Toast?.info(`Deleted “${file.name}”. It could not be read first, so this one isn't undoable.`); return; }
+    window.Undo.record(`Deleted attachment “${file.name}”`, async () => {
+      await window.api.saveAttachment(project.path, file.name, base64);
+      invalidateRefs(project.path);
+      await renderAttachments(block, project);
+    });
+  }
+
+  async function removeUnreferenced(block, project, orphans) {
+    const total = orphans.reduce((n, f) => n + f.size, 0);
+    const ok = await window.Modal.confirm({
+      title: `Remove ${orphans.length} unused attachment${orphans.length === 1 ? '' : 's'}?`,
+      body: `${fileSize(total)} of files that no note links to. This can be undone.`,
+      okText: 'Remove', danger: true,
+    });
+    if (!ok) return;
+
+    const saved = [];
+    for (const f of orphans) {
+      let base64 = null;
+      try { base64 = await captureBytes(project, f.name); } catch { /* not undoable, still delete */ }
+      try { await window.api.deleteAttachment(project.path, f.name); saved.push({ name: f.name, base64 }); }
+      catch (err) { window.Toast?.error(`Could not delete ${f.name}: ${err.message || err}`); }
+    }
+
+    invalidateRefs(project.path);
+    window.Attach.forget(project.path);
+    await renderAttachments(block, project);
+    if (!saved.length) return;
+
+    // One undo entry for the batch: the user made one decision, so it takes one action to reverse.
+    window.Undo.record(`Removed ${saved.length} unused attachment${saved.length === 1 ? '' : 's'}`, async () => {
+      for (const s of saved) {
+        if (s.base64 == null) continue;
+        try { await window.api.saveAttachment(project.path, s.name, s.base64); } catch { /* report below */ }
+      }
+      invalidateRefs(project.path);
+      await renderAttachments(block, project);
     });
   }
 

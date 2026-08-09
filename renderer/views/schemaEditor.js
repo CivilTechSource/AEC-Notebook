@@ -31,6 +31,18 @@
     await window.Store.saveSchemaForPath(currentPath);
   }
 
+  // Typing in a field name or a highlight rule used to `await save()` per CHARACTER. Each of those
+  // is a full schemas.json write — temp file, .bak copy, rename — and each bumped the schema
+  // version, so naming one field left the header reading "v347". Structural edits (add, delete,
+  // reorder, type change) still save immediately: they're discrete, and losing one is worse than
+  // an extra write.
+  const saveSoon = (() => {
+    let t = null;
+    const f = () => { clearTimeout(t); t = setTimeout(() => { t = null; save(); }, 400); };
+    f.flush = () => { if (!t) return; clearTimeout(t); t = null; save(); };
+    return f;
+  })();
+
   function render(host) {
     const paths = window.Store.state.libraryPaths;
     if (!currentPath || !paths.some((p) => p.path === currentPath)) currentPath = paths[0]?.path || null;
@@ -72,7 +84,9 @@
       </div>`;
 
     host.querySelector('#crumbWs').onclick = () => document.querySelector('.ribbon-btn[data-page="workspace"]').click();
-    host.querySelector('#pathSelect').onchange = (e) => { currentPath = e.target.value; selectedId = null; render(host); };
+    // Flush before currentPath moves: save() resolves the target from currentPath at call time,
+    // so a pending debounced write would land on the schema you just switched TO.
+    host.querySelector('#pathSelect').onchange = (e) => { saveSoon.flush(); currentPath = e.target.value; selectedId = null; render(host); };
     host.querySelector('#seSection').onclick = async () => { sections().push({ id: uid('sec_'), title: 'New Section', fields: [] }); await save(); renderSections(host); };
     host.querySelector('#seAdd').onclick = () => addField(host);
     host.querySelector('#seExport').onclick = exportSchema;
@@ -130,7 +144,7 @@
     titleInput.onchange = async () => { sec.title = titleInput.value; await save(); };
     head.querySelector('[data-addf]').onclick = () => addField(host, sec);
     head.querySelector('[data-delsec]').onclick = async () => {
-      if (sections().length === 1) { alert('Keep at least one section.'); return; }
+      if (sections().length === 1) { window.Toast?.info('Keep at least one section — fields have to live somewhere.'); return; }
       const ok = await window.Modal.confirm({ title: 'Delete section?', body: `“${sec.title}” and its ${sec.fields.length} field(s) will be removed.`, okText: 'Delete', danger: true });
       if (!ok) return;
       const idx = sections().indexOf(sec);
@@ -223,8 +237,11 @@
     // Label updates live; the KEY is assigned once, on blur, from the finished label — it's the
     // property name in project.json, so it should read like `client`, not `new_field_v5s`.
     // A key is never rewritten once set: existing project data is stored under it.
-    name.oninput = async () => { f.label = name.value; await save(); renderSections(host); };
-    name.onchange = async () => { if (!f.key) { f.key = uniqueKey(slug(name.value), f); await save(); } };
+    name.oninput = () => { f.label = name.value; saveSoon(); renderSections(host); };
+    name.onchange = async () => {
+      saveSoon.flush();                       // the name is finished — don't sit on it
+      if (!f.key) { f.key = uniqueKey(slug(name.value), f); await save(); }
+    };
     detail.querySelector('#dType').onchange = async (e) => {
       f.type = e.target.value;
       if (HAS_OPTIONS(f.type) && !f.options) f.options = [];
@@ -266,9 +283,9 @@
       const hl = extra.querySelector('#hlEquals');
       // Also re-render the option rows: the flagged option's dot/row styling is derived from
       // this rule, so it stayed stale until something else forced a redraw.
-      if (hl) hl.oninput = async () => {
+      if (hl) hl.oninput = () => {
         f.validation.highlightWhen = hl.value.trim() ? { equals: hl.value.trim() } : undefined;
-        await save(); renderOptions(host, extra, f); renderPreview(extra, f);
+        saveSoon(); renderOptions(host, extra, f); renderPreview(extra, f);
       };
       renderPreview(extra, f);
     } else if (f.type === 'number') {
@@ -342,7 +359,7 @@
 
   async function addField(host, sec) {
     const target = sec || sections().find((s) => s.fields.some((f) => f.id === selectedId)) || sections()[0];
-    if (!target) { alert('Add a section first.'); return; }
+    if (!target) { window.Toast?.info('Add a section first — fields live inside sections.'); return; }
     // Deliberately no key yet: it's derived from the name the user gives the field (see
     // renderDetail). A field that's never named falls back to a generated key on save.
     const f = { id: uid('f_'), key: '', label: 'New Field', type: 'text', required: false, options: [], validation: {} };
@@ -359,16 +376,75 @@
     URL.revokeObjectURL(a.href); window.setStatus?.('Schema exported');
   }
   async function copySchema() { await navigator.clipboard.writeText(JSON.stringify(schema(), null, 2)); window.setStatus?.('Schema copied'); }
+  // An imported file is arbitrary JSON off someone's disk, and it becomes the definition every
+  // project in this folder is validated against. Unchecked, a field with no key silently collects
+  // every project's data in one slot, an unknown type renders as a blank control, and a malformed
+  // options array throws inside the board render — which is a page that won't paint, not an error.
+  //
+  // Coerced rather than rejected wherever the intent is unambiguous (a missing id, a missing
+  // options list); rejected where guessing would be wrong.
+  function normaliseImported(parsed) {
+    if (!parsed || typeof parsed !== 'object') throw new Error('that file isn’t a schema object');
+    const rawSections = Array.isArray(parsed.sections)
+      ? parsed.sections
+      : [{ title: 'Details', fields: Array.isArray(parsed.fields) ? parsed.fields : null }];
+
+    const validTypes = new Set(TYPES.map(([v]) => v));
+    const seenKeys = new Set();
+    const sections = rawSections.map((sec) => {
+      if (!sec || typeof sec !== 'object') throw new Error('a section is not an object');
+      if (!Array.isArray(sec.fields)) throw new Error(`section “${sec.title || '(untitled)'}” has no fields array`);
+      return {
+        id: typeof sec.id === 'string' && sec.id ? sec.id : uid('sec_'),
+        title: String(sec.title ?? 'Details'),
+        fields: sec.fields.map((f) => {
+          if (!f || typeof f !== 'object') throw new Error('a field is not an object');
+          const type = validTypes.has(f.type) ? f.type : 'text';
+          // A duplicate or missing key means two fields writing to one slot in project.json.
+          let key = typeof f.key === 'string' ? f.key.trim() : '';
+          if (!key) key = slug(f.label || '') || 'field';
+          while (seenKeys.has(key)) key = `${key}_2`;
+          seenKeys.add(key);
+          return {
+            id: typeof f.id === 'string' && f.id ? f.id : uid('f_'),
+            key,
+            label: String(f.label ?? key),
+            type,
+            required: !!f.required,
+            options: HAS_OPTIONS(type)
+              ? (Array.isArray(f.options) ? f.options : []).map((o) => ({
+                  label: String(o?.label ?? o?.value ?? ''),
+                  value: String(o?.value ?? ''),
+                  requiresAttachment: !!o?.requiresAttachment,
+                }))
+              : [],
+            validation: (f.validation && typeof f.validation === 'object') ? f.validation : {},
+          };
+        }),
+      };
+    });
+    if (!sections.length) throw new Error('the schema has no sections');
+    return { version: Number(parsed.version) || 1, sections };
+  }
+
   function importSchema(host) {
     const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json';
     input.onchange = async () => {
       const file = input.files[0]; if (!file) return;
-      try {
-        const parsed = JSON.parse(await file.text());
-        const norm = Array.isArray(parsed.sections) ? parsed : { version: 1, sections: [{ id: uid('sec_'), title: 'Details', fields: parsed.fields || [] }] };
-        window.Store.setSchemaForPath(currentPath, norm);
-        selectedId = null; await save(); render(host); window.setStatus?.('Schema imported');
-      } catch (err) { alert('Import failed: ' + err.message); }
+      let norm;
+      try { norm = normaliseImported(JSON.parse(await file.text())); }
+      catch (err) { window.Toast?.error('Import failed — ' + (err.message || err)); return; }
+
+      const ok = await window.Modal.confirm({
+        title: 'Replace this folder’s schema?',
+        body: `“${base(currentPath)}” will use the imported definition (${norm.sections.reduce((n, s) => n + s.fields.length, 0)} field(s)). `
+            + 'Project data already saved under field names that are no longer in the schema is dropped the next time each project is saved.',
+        okText: 'Import',
+      });
+      if (!ok) return;
+
+      window.Store.setSchemaForPath(currentPath, norm);
+      selectedId = null; await save(); render(host); window.setStatus?.('Schema imported');
     };
     input.click();
   }
@@ -377,5 +453,10 @@
   function escHtml(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
   function escAttr(s) { return String(s ?? '').replace(/"/g, '&quot;'); }
 
-  window.SchemaEditor = { render };
+  // The last few characters of a field name must not go down with the window.
+  window.addEventListener('beforeunload', () => saveSoon.flush());
+
+  // normaliseImported is exported for tests: it's the part with real edge cases, and it decides
+  // what an untrusted file is allowed to turn into. Same pattern as MDEmbeds / MDCheckboxes.
+  window.SchemaEditor = { render, flushPending: () => saveSoon.flush(), normaliseImported };
 })();

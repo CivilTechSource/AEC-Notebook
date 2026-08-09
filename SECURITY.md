@@ -25,8 +25,12 @@ Current mitigations:
 - `contextIsolation` on, `nodeIntegration` off, `sandbox` on. The renderer has no Node access; the
   entire privileged surface is the channel allowlist in `src/main/preload.js`.
 - Filesystem paths from the renderer are checked against the user's registered library folders
-  before the storage layer sees them.
+  before the storage layer sees them. Every path-taking IPC channel goes through that check.
+- The configurable app folder name is joined onto project paths, so it is sanitised (separators,
+  Windows-reserved characters and dot-only segments removed) and the resolved data directory is
+  asserted to be inside the project folder.
 - Note names are confined with `path.basename`, so a crafted name can't escape its notes folder.
+- Attachments are capped at 25 MB, enforced in the main process as well as the renderer.
 - Plugins run in `<iframe sandbox="allow-scripts">` (null origin, no app access) served over a
   separate `pnplugin://` scheme with `default-src 'none'` — **no network access**. The host
   verifies `event.source` against registered frames and honours only manifest-declared

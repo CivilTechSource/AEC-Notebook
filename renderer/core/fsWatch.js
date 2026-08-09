@@ -25,6 +25,10 @@
   function start() {
     window.api.onFsChange((change) => {
       if (!change) return;
+      // Attachment data URLs are cached for the session. Saving always picks a fresh filename, so
+      // in practice they can't go stale — but if anything outside the app replaces one, this is
+      // the signal that says so.
+      if (change.projectPath) window.Attach?.forget?.(change.projectPath);
       if (change.kind === 'project') window.Store?.reloadProject?.(change.projectPath);
       dispatch(change);
     });
