@@ -20,11 +20,17 @@ work they describe — in plain JSON and Markdown you can still open without thi
 
 ## The problem it solves
 
-A structured note system that engineers, architects and other disciplines can capture their knowledge/notes/experience on a project.
-AEC Notebook puts both next to the folder itself. Your files never move, and nothing is locked in:
+A structured place for engineers, architects and every other discipline to capture what they know
+about a project — the facts *and* the experience.
+
+Today those live apart. The facts end up in a spreadsheet that drifts out of date; the site notes
+end up in someone's inbox. The only thing everyone agrees on is the project folder on the drive.
+
+AEC Notebook puts both next to that folder. Your files never move, and nothing is locked in:
 project data is a `project.json` you can read and diff, notes are ordinary `.md` files.
 
 ## What it does
+
 **Describe your projects however you like.** Every library folder gets its own field definitions —
 text, number, date, select, multi-select, file, checkbox — grouped into sections you can drag to
 reorder. Export a schema as JSON and reuse it on the next drive.
@@ -35,11 +41,23 @@ reorder. Export a schema as JSON and reuse it on the next drive.
 cross-field rules. Here, selecting *Zone 3* demands a flood risk assessment on file before the
 project counts as complete, and flags the field in red until it has one.
 
-**Site notes that link to each other.** Markdown with `[[wikilinks]]`, `#tags`, backlinks, and
-drag-and-drop attachments. Rename a note and it offers to repoint every link to it. Edit a note in
-another editor and the app notices instead of overwriting you.
+**Site notes that link to each other.** Markdown with `[[wikilinks]]`, `#tags`, backlinks, tables,
+callouts, task lists, LaTeX and Mermaid diagrams. Rename a note and it offers to repoint every link
+to it. Edit a note in another editor and the app notices instead of overwriting you. Every save
+keeps a version you can diff and restore.
 
 ![A note in reading view with a heading, task list, tag chips, a wikilink and a backlinks panel](docs/images/notes.png)
+
+**Drop files in and keep track of them.** Drag a photo, a marked-up PDF or a spreadsheet into a
+note and it's copied in beside it. The project board lists every attachment with its size and which
+notes link to it — and flags the ones nothing references any more, so a folder of site photos
+doesn't quietly grow forever.
+
+<!-- Screenshot to add: the Attachments section on a project board, with a couple of linked files
+     and one flagged "not linked from any note". Save it as docs/images/attachments.png and
+     uncomment the line below.
+![The Attachments section on a project board, listing files with their sizes and which notes link to them](docs/images/attachments.png)
+-->
 
 **Extend it without forking it.** Plugins are a folder with a manifest and one JavaScript file.
 They run in an isolated sandbox with no network and no filesystem access, and can only touch
@@ -49,11 +67,15 @@ project fields you've granted them. A broken plugin can't take the app down.
 
 **Plus:** a tabbed workspace with split panes and session restore · full-text search and a
 `Ctrl/Cmd+P` quick switcher · a spreadsheet-style table view of every project in a folder,
-exportable to CSV · version history for every note · light and dark themes, with font, size,
-spacing, column width and accent colour all adjustable — and a `custom.css` for anything else.
+exportable to CSV · note templates that fill themselves in from the project's own fields · light
+and dark themes.
 
-Not sure of the syntax? The **Syntax & shortcuts** pane on the right lists all of it, and clicking
-a snippet copies it.
+**Make it yours.** The **Settings** page adjusts the font, size, line spacing, heading scale,
+column width and accent colour for notes. Everything in the app is a CSS variable, so a `custom.css`
+in the app folder can change anything the page doesn't offer.
+
+Not sure of the syntax? The **Syntax & shortcuts** pane on the right lists all of it — markdown and
+keyboard — and clicking a snippet copies it.
 
 ## Download
 
@@ -61,9 +83,9 @@ Grab an installer from the [**Releases page**](../../releases/latest):
 
 | Platform | File |
 | --- | --- |
-| Windows | `AEC Notebook Setup <version>.exe` |
-| macOS | `AEC Notebook-<version>.dmg` |
-| Linux | `.AppImage` or `.deb` |
+| Windows | `aec-notebook-<version>-win-x64.exe` |
+| macOS | `aec-notebook-<version>-mac-<arch>.dmg` |
+| Linux | `aec-notebook-<version>-linux-x64.AppImage` or `.deb` |
 
 Installers are **not code-signed**, so Windows SmartScreen and macOS Gatekeeper will warn on first
 run. On Windows choose *More info → Run anyway*; on macOS right-click the app and choose *Open*.
@@ -90,18 +112,26 @@ npm test
 ```
 
 Build installers for the current platform (output in `dist/`, which is not tracked in git —
-binaries are published through Releases instead):
+binaries are published through Releases instead). The tests run first, so a failing build is never
+packaged:
 
 ```bash
-npm run dist
+npm run build
 ```
+
+There are `build:win`, `build:mac` and `build:linux` for a specific platform, and `build:dir` for
+an unpacked folder you can run without installing — useful when you only want to check something
+loads.
 
 ## Getting started
 
-1. Open the **Storage** page from the left ribbon and add a *library folder* — a folder that
+The left ribbon has the workspace at the top and everything configurable at the bottom.
+
+1. Open **Storage & Files** (bottom of the ribbon) and add a *library folder* — a folder that
    contains project folders. Set how many levels deep the projects sit (1 = direct subfolders).
 2. Open the **Schema Editor** and define the fields for that folder.
 3. Pick a project in the left panel, hit **Edit**, and fill it in. Everything auto-saves.
+4. Add a note from the project board, and drag any file into it to attach it.
 
 ## Where your data lives
 
@@ -116,8 +146,13 @@ the Storage page:
 | Central | `<userData>/Projects/<Project Name (id)>/` |
 | Custom | `<your folder>/ProjectNotes/Projects/<Project Name (id)>/` |
 
-**App config** (`settings.json`, `library.json`, `schemas.json`, `session.json`, `plugins.json`)
-always lives in the platform's user-data directory:
+**Note version history** is separate again, because snapshots are a safety net for the app rather
+than a project deliverable — on a synced drive you don't want one every few minutes counting
+against your quota. It defaults to the central app folder; **Storage & Files** can move it beside
+the notes instead, and switching takes the existing snapshots with it.
+
+**App config** (`settings.json`, `library.json`, `schemas.json`, `session.json`, `plugins.json`,
+and your `custom.css`) always lives in the platform's user-data directory:
 
 | Platform | Path |
 | --- | --- |
@@ -157,24 +192,31 @@ troubleshooting. `plugins/storm-runoff/` is a complete worked example.
 ## Architecture
 
 ```
-src/main/       Electron main process — persistence, scanning, search index, plugin loading
+src/main/       Electron main process — everything that touches the filesystem
   main.js         app lifecycle, window, navigation guards, pnplugin:// scheme
   menu.js         the native application menu
   pathGuard.js    the allowlist every project-scoped IPC call is checked against
   writeTracker.js holds app quit open until pending writes land
+  windowState.js  remembers window bounds, and refuses to restore off-screen ones
   preload.js      the entire renderer-facing API surface
   ipc/            one module per area (notes, project, config, search, plugins, …)
-  services/       storage, scanner, search, searchIndex, watcher, plugins, pluginHost
-src/shared/     Pure logic usable from either process (data_validation.js, theme.js)
+  services/       storage, scanner, search, searchIndex, watcher, history,
+                  templates, userStyles, plugins, pluginHost
+src/shared/     Pure logic usable from either process — validation, theme tokens,
+                diff, retention policy, template substitution
 renderer/       UI — no Node access; everything goes through window.api
   styles/         design tokens + per-area stylesheets
-  core/           store, toast, modal, undo, fsWatch, icons, events
-  workspace/      tab groups, splitting, session layout
+  core/           store, toast, modal, popover, undo, fsWatch, icons, events
+  workspace/      tab groups, splitting, the right sidebar
   editor/         note editor, markdown rendering, attachments
-  views/          project board, schema editor, table, storage, quick switcher
+    cm/             CodeMirror wiring
+    markdown/       callouts, embeds, footnotes, maths, diagrams, highlighting
+  views/          project board, schema editor, table, storage, settings,
+                  quick switcher, version history
+  panels/         sidebar panes: backlinks, outline, outgoing links, tags, reference
   plugins/        host side of the sandboxed plugin bridge
 plugins/        Bundled sample plugins
-test/           node:test unit tests
+test/           node:test unit tests — no framework
 ```
 
 Security posture: `contextIsolation` on, `nodeIntegration` off, a channel-allowlisted preload, a

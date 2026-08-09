@@ -82,8 +82,7 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "identity": null,
       "darkModeSupport": true
