@@ -354,6 +354,94 @@
 
   function setRibbonIcon(page, svg) { const b = document.querySelector(`.ribbon-btn[data-page="${page}"]`); if (b) b.innerHTML = svg; }
 
+  // ---------- plugin activity pages ----------
+  // A plugin declaring contributes.activity owns a whole page rather than a board section, so it
+  // gets a ribbon button of its own. Built at boot and rebuilt whenever one is enabled or disabled.
+  const activitySlugs = new Map();   // slug -> plugin
+
+  // Plugin ids may legally contain '.', which reads as a class selector inside '#id'. The DOM gets
+  // a slug instead and this map remembers which plugin it belongs to.
+  function activitySlug(id, taken) {
+    const base = String(id).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'plugin';
+    let slug = base;
+    for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
+    return slug;
+  }
+
+  // The manifest names an icon, it never supplies markup: that string lands in the app's own DOM,
+  // outside the sandbox. Anything not a known glyph falls back to a letter.
+  function activityIcon(p) {
+    const named = p.contributes?.activity?.icon;
+    if (named && Object.prototype.hasOwnProperty.call(window.ICON, named) && typeof window.ICON[named] === 'string') {
+      return window.ICON[named];
+    }
+    return `<span class="rb-letter">${escapeHtml((p.name[0] || 'P').toUpperCase())}</span>`;
+  }
+
+  function pageEl(id) { return [...document.querySelectorAll('.page')].find((el) => el.id === id) || null; }
+
+  async function renderActivityRibbon() {
+    let plugins = [];
+    try { plugins = await window.PluginBridge.getActivityPlugins(); } catch { /* leave empty */ }
+
+    const next = new Map();
+    for (const p of plugins) next.set(activitySlug(p.id, next), p);
+
+    // Retire buttons and pages for anything just disabled or uninstalled. If the user is standing
+    // on that page, move them off it before it disappears out from under them.
+    for (const slug of [...activitySlugs.keys()]) {
+      if (next.has(slug)) continue;
+      const key = `plugin-${slug}`;
+      document.querySelector(`.ribbon-btn[data-page="${key}"]`)?.remove();
+      const page = pageEl(`page-${key}`);
+      if (page) { const wasOpen = !page.hidden; page.remove(); if (wasOpen) showPage('workspace'); }
+      delete PAGE_RENDER[key];
+      activitySlugs.delete(slug);
+    }
+
+    const ribbon = $('#ribbon');
+    for (const [slug, p] of next) {
+      const key = `plugin-${slug}`;
+      activitySlugs.set(slug, p);
+      if (pageEl(`page-${key}`)) continue;          // already built
+
+      const page = document.createElement('section');
+      page.className = 'page fullpage';
+      page.id = `page-${key}`;
+      page.hidden = true;
+      page.innerHTML = '<div class="plugin-page-host"></div>';
+      $('#shell').appendChild(page);
+
+      const title = p.contributes.activity.title || p.name;
+      const btn = document.createElement('button');
+      btn.className = 'ribbon-btn';
+      btn.dataset.page = key;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.innerHTML = activityIcon(p);
+      btn.addEventListener('click', () => showPage(key));
+      // Above the spacer, with Workspace: an activity plugin is somewhere you work, not
+      // configuration. The bottom group is ordered least- to most-global and this isn't part of it.
+      ribbon.insertBefore(btn, ribbon.querySelector('.ribbon-spacer'));
+
+      // showPage re-runs PAGE_RENDER on every visit. Remounting would reload the iframe and throw
+      // away whatever the user was halfway through typing, so mount once and just unhide after.
+      PAGE_RENDER[key] = () => {
+        const host = page.querySelector('.plugin-page-host');
+        if (!host || host.dataset.mounted) return;
+        host.dataset.mounted = '1';
+        window.PluginBridge.mount(host, p, { project: null, fields: [], values: {} }, { fill: true, mode: 'activity' });
+      };
+    }
+  }
+
+  // The Plugins page sends people here rather than mounting a second copy in its own card.
+  function openActivityPlugin(id) {
+    for (const [slug, p] of activitySlugs) if (p.id === id) { showPage(`plugin-${slug}`); return true; }
+    return false;
+  }
+  window.openActivityPlugin = openActivityPlugin;
+
   // "N plugins active" counted everything INSTALLED, so disabling one changed nothing in the
   // status bar — the one place that claims to tell you what's running.
   async function updatePluginStatus() {
@@ -363,6 +451,8 @@
       const n = plugins.filter((p) => enabled[p.id] !== false).length;   // absent means enabled
       $('#statusPlugins').textContent = `${n} ${n === 1 ? 'plugin' : 'plugins'} active`;
     } catch { /* noop */ }
+    // Same trigger points as the status count — boot, and every toggle on the Plugins page.
+    await renderActivityRibbon();
   }
   window.updatePluginStatus = updatePluginStatus;   // the Plugins page re-runs it after a toggle
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }

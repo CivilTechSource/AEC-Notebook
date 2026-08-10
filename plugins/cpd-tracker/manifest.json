@@ -1,0 +1,9 @@
+{
+  "id": "cpd-tracker",
+  "name": "CPD Tracker",
+  "version": "1.0.0",
+  "description": "Log Continuing Professional Development against an annual target, attach evidence, link entries to projects, and export an annual return.",
+  "entry": "index.js",
+  "contributes": { "activity": { "title": "CPD", "icon": "cpd" } },
+  "permissions": ["storage", "files", "projects"]
+}

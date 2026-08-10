@@ -44,3 +44,36 @@ test('listPlugins reads a valid manifest and skips an invalid one', async () => 
   await assert.rejects(() => plugins.readPluginSource(appRoot, 'evil'), /Plugin not found/);
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test('contributes and multiple permissions survive the manifest read intact', async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'aecnb-'));
+  const appRoot = path.join(root, 'app');
+  const pdir = path.join(appRoot, 'plugins', 'tracker');
+  await fsp.mkdir(pdir, { recursive: true });
+  await fsp.writeFile(path.join(pdir, 'manifest.json'), JSON.stringify({
+    id: 'tracker',
+    name: 'Tracker',
+    contributes: { activity: { title: 'CPD', icon: 'cpd' } },
+    permissions: ['storage', 'files', 'projects'],
+  }));
+  await fsp.writeFile(path.join(pdir, 'index.js'), '// noop');
+
+  const [p] = await plugins.listPlugins(appRoot);
+  // app.js builds a ribbon button off contributes.activity and pluginBridge gates every brokered
+  // call on this permissions array — a manifest reader that dropped either would fail open.
+  assert.deepStrictEqual(p.contributes, { activity: { title: 'CPD', icon: 'cpd' } });
+  assert.deepStrictEqual(p.permissions, ['storage', 'files', 'projects']);
+  assert.strictEqual(p.entry, 'index.js', 'entry defaults when the manifest omits it');
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('the bundled CPD Tracker manifest is valid and asks only for what it uses', async () => {
+  const [cpd] = (await plugins.listPlugins(path.join(__dirname, '..'))).filter((p) => p.id === 'cpd-tracker');
+  assert.ok(cpd, 'cpd-tracker should be discovered from the bundled plugins dir');
+  assert.strictEqual(cpd.contributes.activity.icon, 'cpd', 'must name an icon that exists in renderer/core/icons.js');
+  assert.deepStrictEqual([...cpd.permissions].sort(), ['files', 'projects', 'storage']);
+
+  const icons = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'core', 'icons.js'), 'utf8');
+  assert.match(icons, /^\s*cpd:\s*'/m, 'the named glyph must exist, or the ribbon falls back to a letter');
+});

@@ -45,6 +45,7 @@
       card.style.flexWrap = 'wrap';
       const on = enabled[p.id] !== false;
       const board = p.contributes?.boardSection;
+      const activity = p.contributes?.activity;
       card.innerHTML = `
         <div class="plug-av" style="background:${COLORS[idx % COLORS.length]}">${escapeHtml((p.name[0] || 'P').toUpperCase())}</div>
         <div class="plug-info">
@@ -53,15 +54,22 @@
             <span class="plug-ver">v${escapeHtml(p.version)}</span>
             <span class="sandbox-badge">${I().shield} Sandboxed</span>
             ${board ? `<span class="sandbox-badge" style="color:var(--accent);background:rgba(91,140,255,.12)">⊞ Board section</span>` : ''}
+            ${activity ? `<span class="sandbox-badge" style="color:var(--purple);background:rgba(155,107,212,.12)">▤ Activity page</span>` : ''}
             ${(p.permissions || []).map((perm) => `<span class="sandbox-badge" style="color:var(--amber);background:rgba(224,162,59,.12)">${escapeHtml(perm)}</span>`).join('')}
           </div>
           <div class="plug-desc">${escapeHtml(p.description)}</div>
           <div class="plug-by">id: <span class="mono">${escapeHtml(p.id)}</span></div>
         </div>
         <div class="switch ${on ? 'on' : ''}" data-toggle title="Enable / disable"><div class="knob"></div></div>
-        <button class="btn primary" data-run>Run</button>
+        <button class="btn primary" data-run>${activity ? 'Open' : 'Run'}</button>
         <div class="sandbox-host" style="flex-basis:100%;" hidden></div>`;
-      card.querySelector('[data-run]').onclick = () => runPlugin(card, p);
+      // An activity plugin already has a page of its own, and running a second copy here would put
+      // two live frames on the same plugin storage — last write wins, silently. Send them to the
+      // real page instead.
+      card.querySelector('[data-run]').onclick = () => {
+        if (activity) { if (!on) { window.setStatus?.(`${p.name} is disabled`); return; } window.openActivityPlugin?.(p.id); return; }
+        runPlugin(card, p);
+      };
       card.querySelector('[data-toggle]').onclick = async (e) => {
         const next = !e.currentTarget.classList.contains('on');
         e.currentTarget.classList.toggle('on', next);

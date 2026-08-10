@@ -30,6 +30,11 @@ inside the installer.
 
 A brand-new area also needs its module added to the list in `src/main/ipc/index.js`.
 
+`guarded()` checks against the *library root* allowlist, so it does not apply to paths derived from
+`centralRoot()` — it would fail closed on every call. `pluginData.ipc.js` is the one such module:
+it takes a plugin id, never a destination path, and asserts containment itself. If you write
+another, say so in the commit rather than leaving it looking like an omission.
+
 **Errors a user could act on must reach them** — `window.Toast.error(...)`, not a swallowed
 `catch {}`. Silent failure is the bug class this codebase has historically suffered from.
 
@@ -43,7 +48,7 @@ src/main/          main.js (lifecycle only), menu.js, pathGuard.js, writeTracker
                    windowState.js, preload.js
 src/main/ipc/      one module per area + index.js registrar
 src/main/services/ storage, scanner, search, searchIndex, watcher, history, templates,
-                   userStyles, plugins, pluginHost
+                   userStyles, plugins, pluginHost, pluginData
 src/shared/        data_validation, theme, templates, diff, history  (dual CommonJS + window global)
 renderer/          index.html, app.js
 renderer/styles/   tokens → base → shell → components → editor → views → theme-light (cascade order)
@@ -73,6 +78,9 @@ meaning.
   over the `pnplugin://` scheme so the page gets its own CSP (`default-src 'none'`,
   `connect-src 'none'`). Plugin code never runs in the main process. Grow the API by adding
   brokered methods in `pluginBridge.js` — never by loosening the sandbox. See `SECURITY.md`.
+  Every brokered call is gated on a manifest-declared permission, and anything naming a file on
+  disk derives that name from the plugin's **id**, never from the message payload — `config:write`
+  joins a filename straight onto the config root without sanitising it.
 - **The path allowlist fails closed.** A corrupt `library.json` means *nothing* is allowed. The
   roots list is cached because it's consulted on every note autosave keystroke; invalidate it when
   `library.json` is written.

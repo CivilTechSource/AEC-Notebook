@@ -23,9 +23,30 @@ const SDK = `(function(){
   window.PluginAPI={
     onInit:function(cb){ if(initData) cb(initData); else initCbs.push(cb); },
     getFields:function(){ return initData? initData.fields : []; },
+    getMode:function(){ return initData? initData.mode : 'standalone'; },
     writeField:function(key,value){ return call('writeField',{key:key,value:value}); },
     copy:function(text){ parent.postMessage({__pn:'copy',payload:{text:String(text)}},'*'); },
-    notify:function(msg){ parent.postMessage({__pn:'notify',payload:{msg:String(msg)}},'*'); }
+    notify:function(msg){ parent.postMessage({__pn:'notify',payload:{msg:String(msg)}},'*'); },
+    // Read-only list of the user's projects. Requires the "projects" permission; [] without it.
+    listProjects:function(){ return call('listProjects',{}); },
+    // The plugin's own persisted document. Requires the "storage" permission.
+    // Whole-document get/set — read once on init, keep it in memory, write the doc back on change.
+    storage:{
+      get:function(){ return call('storage.get',{}); },
+      set:function(data){ return call('storage.set',{data:data}); }
+    },
+    // The plugin's own file store. Requires the "files" permission.
+    // pick() opens the OS file dialog and copies the chosen file in, returning its stored name;
+    // bytes never cross into this frame. read() is a data: URL and only renders for images —
+    // this page's CSP allows img-src data: and nothing else, so use open() for anything else.
+    files:{
+      pick:function(){ return call('files.pick',{}); },
+      list:function(){ return call('files.list',{}); },
+      read:function(name){ return call('files.read',{name:name}); },
+      open:function(name){ return call('files.open',{name:name}); },
+      reveal:function(name){ return call('files.reveal',{name:name}); },
+      remove:function(name){ return call('files.delete',{name:name}); }
+    }
   };
 })();`;
 

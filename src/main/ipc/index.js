@@ -13,6 +13,7 @@ const MODULES = [
   require('./templates.ipc'),
   require('./history.ipc'),
   require('./plugins.ipc'),
+  require('./pluginData.ipc'),
   require('./appearance.ipc'),
   require('./window.ipc'),
 ];

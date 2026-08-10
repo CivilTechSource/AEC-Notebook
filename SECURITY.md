@@ -37,6 +37,14 @@ Current mitigations:
   permissions.
 - A plugin's `manifest.entry` must be a plain `.js` filename inside its own folder; paths and `..`
   are rejected.
+- A plugin's own storage and file folder are named from its **manifest id**, never from anything it
+  sends over the bridge — the config write path joins a filename onto the config root without
+  sanitising it, so a plugin-supplied name would be a traversal. The id is re-validated at the
+  bridge and again in the main process, and containment is asserted after the join. Plugin storage
+  is capped at 2 MB and evidence files at the attachment limit.
+- Plugin files are reached by stored filename only. A plugin never sends or receives a filesystem
+  path: importing goes through the native file dialog (the user's own consent gesture) and the main
+  process reads the bytes, so they never pass through the renderer or the sandboxed frame.
 - Rendered markdown is sanitised with DOMPurify. External links open in the system browser; the
   app window itself cannot be navigated away from `index.html`.
 
@@ -44,6 +52,11 @@ Current mitigations:
 
 - **Plugins are not sandboxed from each other's data.** A plugin granted `writeField` can write any
   field of the project it's mounted on. Only install plugins you trust.
+- **`projects` discloses where your projects are.** A plugin granted that permission receives each
+  project's full path, because that is what identifies a project everywhere else in the app and
+  what makes a stored reference durable. On a shared drive that reveals your folder layout. It is
+  read-only — a plugin cannot read the files themselves — but it is a disclosure, and it is why the
+  permission is declared, badged on the Plugins page, and refused unless asked for.
 - **Installers are not code-signed.** Windows SmartScreen and macOS Gatekeeper will warn on first
   run. Verify you downloaded from the official releases page.
 - **Project data is not encrypted at rest.** It's plain JSON and Markdown by design — use full-disk

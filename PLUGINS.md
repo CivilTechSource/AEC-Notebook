@@ -119,7 +119,21 @@ a project attached.
 | `description` | no | One line, shown under the name. |
 | `entry` | no | Script filename. Defaults to `index.js`. Must be a plain `.js` filename inside the plugin folder — subdirectories, `..`, and absolute paths are rejected. |
 | `contributes.boardSection.title` | no | Adds a section with this heading to every project board. Omit it and the plugin only runs from the Plugins page. |
-| `permissions` | no | Array of capabilities. Currently only `"writeField"` exists. |
+| `contributes.activity.title` | no | Gives the plugin its own ribbon button and a full page of its own, instead of a board section. For a tool that owns a whole workflow rather than annotating one project. |
+| `contributes.activity.icon` | no | The *name* of an icon in the app's own set (`renderer/core/icons.js`), e.g. `"cpd"`. Anything unrecognised falls back to the first letter of `name`. You cannot supply your own SVG — that markup would land in the app's DOM, outside your sandbox. |
+| `permissions` | no | Array of capabilities: `"writeField"`, `"storage"`, `"files"`, `"projects"`. Each is refused unless declared. |
+
+### Board section or activity page?
+
+A **board section** renders inside *every* project board, below Notes and Attachments, with the
+mounted project's fields in `ctx`. Right for something that annotates or calculates against one
+project.
+
+An **activity page** gets a ribbon button and the whole page. It is mounted once, with no project
+context, and is not re-mounted when you navigate away and back — so a half-typed form survives.
+Right for a tool that owns its own data (a log, a register, a tracker). In this mode your frame is
+sized by the layout, not by your content, so set `html,body{height:100%}` yourself and scroll your
+own body.
 
 Everything is one file: `entry` is the only script loaded. If you want to split code up, inline it
 or concatenate it yourself before shipping.
@@ -175,6 +189,50 @@ Copies text to the clipboard through the host and shows a confirmation. Fire-and
 
 Shows a toast in the app. Fire-and-forget.
 
+### `storage.get()` / `storage.set(data)` → `Promise<{ ok, data?, error? }>`
+
+Requires `"storage"`. Your plugin's own JSON document, stored beside the app's config in the user
+profile as `plugin-<your-id>.json` — **not** in the install directory, which needs admin rights and
+is replaced on every update.
+
+It is a whole-document read and write, not a key/value store: read once on init, keep it in memory,
+and write the whole thing back when it changes.
+
+```js
+const res = await PluginAPI.storage.get();
+const doc = (res.ok && res.data) || { entries: [] };
+doc.entries.push({ hours: 3.5 });
+const w = await PluginAPI.storage.set(doc);
+if (!w.ok) PluginAPI.notify('Could not save: ' + w.error);   // never claim a save that didn't land
+```
+
+Capped at 2 MB serialised; past that `set` returns `{ ok: false }` rather than growing the config
+root without bound. The write goes through the app's normal config path, so it is atomic and keeps
+a `.bak`. Because the filename comes from your `id`, changing your `id` orphans the data.
+
+### `files.*` → `Promise<{ ok, … }>`
+
+Requires `"files"`. A private folder for the plugin, at `plugin-data/<your-id>/files/`.
+
+| Call | Returns |
+| --- | --- |
+| `files.pick()` | Opens the OS file dialog and copies the chosen file in. `{ ok, name, size }`, or `{ ok, cancelled: true }`. |
+| `files.list()` | `{ ok, files: [{ name, size, modified }] }` |
+| `files.read(name)` | `{ ok, dataUrl }` — a `data:` URL |
+| `files.open(name)` / `files.reveal(name)` | Hands the file to the OS |
+| `files.remove(name)` | Deletes it |
+
+You never see or supply a filesystem path — only the name the file was stored under. Files are
+capped at the same size as attachments, and a name collision renames rather than overwrites.
+
+`read` is only useful for **images**: this page's CSP allows `img-src data:` and nothing else, so a
+PDF in an `<embed>` is blocked. Preview images inline, and give everything else an Open button.
+
+### `listProjects()` → `Promise<{ ok, projects }>`
+
+Requires `"projects"`. Read-only: `[{ id, name, group }]`, where `group` is the library folder's
+name. Use `id` if you need to store a durable reference to a project.
+
 ---
 
 ## Styling
@@ -190,7 +248,9 @@ automatically:
 
 Don't hardcode colours — `#fff` looks wrong the moment someone switches theme. Use `var(--text)`.
 
-Your iframe is resized to fit its content automatically; don't set a fixed height on `body`.
+Your iframe is resized to fit its content automatically; don't set a fixed height on `body`. The
+exception is a `contributes.activity` plugin, which owns the page: there the frame is sized by the
+layout and you set `html,body{height:100%}` and scroll your own body.
 
 ---
 
@@ -203,8 +263,9 @@ your files or phone home.
 | Not available | Do this instead |
 | --- | --- |
 | Network — `fetch`, `XMLHttpRequest`, WebSockets, remote images/fonts/scripts | Bundle what you need. Plugins are offline tools. |
-| `localStorage`, `sessionStorage`, cookies (these **throw**, they don't just fail) | Persist via `writeField` into a project field. |
-| Node, `require`, `fs`, filesystem access of any kind | — |
+| `localStorage`, `sessionStorage`, cookies (these **throw**, they don't just fail) | `PluginAPI.storage` for your own data, or `writeField` to set a project field. |
+| Node, `require`, `fs`, filesystem access of any kind | `PluginAPI.files` — a private folder, reached by filename, never by path. |
+| Downloading a file (`<a download href="data:…">` is blocked by the CSP) | `PluginAPI.copy()` — put CSV or Markdown on the clipboard and let the user paste it. |
 | The app's DOM, its variables, other plugins | Use `PluginAPI`. |
 | `window.open`, navigation, alerts | `PluginAPI.notify()`. |
 | Remote images | Inline `data:` URIs (allowed) or SVG. |

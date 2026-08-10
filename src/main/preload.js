@@ -81,6 +81,15 @@ contextBridge.exposeInMainWorld('api', {
   pluginUserDir: () => ipcRenderer.invoke('plugins:userDir'),
   openPluginUserDir: () => ipcRenderer.invoke('plugins:openUserDir'),
 
+  // A plugin's own file store. The renderer never passes a destination path — only the plugin id
+  // and a stored filename; the main process derives the location. See ipc/pluginData.ipc.js.
+  pluginImportFile: (id, src) => ipcRenderer.invoke('pluginData:import', { id, src }),
+  pluginListFiles: (id) => ipcRenderer.invoke('pluginData:list', { id }),
+  pluginReadFile: (id, name) => ipcRenderer.invoke('pluginData:read', { id, name }),
+  pluginDeleteFile: (id, name) => ipcRenderer.invoke('pluginData:delete', { id, name }),
+  pluginOpenFile: (id, name) => ipcRenderer.invoke('pluginData:open', { id, name }),
+  pluginRevealFile: (id, name) => ipcRenderer.invoke('pluginData:reveal', { id, name }),
+
   // Menu events (main -> renderer)
   onMenu: (channel, handler) => {
     const valid = ['menu:open-folder', 'menu:scan-folder', 'menu:open-schema', 'menu:open-plugins'];

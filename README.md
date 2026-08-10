@@ -167,9 +167,14 @@ page, which copies from your other locations and leaves the originals as a backu
 
 ## Plugins
 
-Plugins add tools to your project boards — a runoff calculator, a fee estimator, a unit converter —
-and can write results straight back into project fields. Each one is a folder with a
-`manifest.json` and a single JavaScript file. No build step.
+Plugins add tools to the app — a runoff calculator, a fee estimator, a CPD log. Each one is a folder
+with a `manifest.json` and a single JavaScript file. No build step.
+
+A plugin either adds a **section to every project board** and writes results straight back into
+project fields, or takes its **own ribbon button and page** for a tool that owns its own data.
+Two are bundled: **Storm Runoff Calculator** (board section) and **CPD Tracker** (activity page —
+logs Continuing Professional Development against an annual target, with evidence files and an
+annual-return export).
 
 **To install one:** open the **Plugins** page in the left ribbon, click **Plugins folder**, drop the
 plugin's folder in, and click **Refresh**. That button opens the right directory for your install
@@ -181,9 +186,12 @@ and creates it if needed:
 | macOS | `~/Library/Application Support/AEC Notebook/plugins` |
 | Linux | `~/.config/AEC Notebook/plugins` |
 
-Plugins run in an isolated sandbox with **no network and no filesystem access**, so a plugin can't
-read your files or phone home — but it can write to the project it's mounted on if you install one
-that declares the `writeField` permission. Install plugins you trust.
+Plugins run in an isolated sandbox with **no network access and no filesystem access**, so a plugin
+can't read your files or phone home. Anything beyond that is a permission it has to declare, and
+the Plugins page badges each one: `writeField` (set fields on the project it's mounted on),
+`storage` (its own settings file), `files` (its own folder, reached only through the file dialog
+you drive), `projects` (a read-only list of your projects, including where they live). Install
+plugins you trust.
 
 **To write one:** see **[PLUGINS.md](PLUGINS.md)** for the full guide — a five-minute starter
 plugin, the manifest format, the `PluginAPI` reference, styling, sandbox limits, and
