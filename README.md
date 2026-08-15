@@ -31,9 +31,14 @@ project data is a `project.json` you can read and diff, notes are ordinary `.md`
 
 ## What it does
 
-**Describe your projects however you like.** Every library folder gets its own field definitions —
-text, number, date, select, multi-select, file, checkbox — grouped into sections you can drag to
-reorder. Export a schema as JSON and reuse it on the next drive.
+**Point it at the project folders you already have.** Add a *library folder* — a folder that
+contains your projects — and every project inside gets its own board automatically. Your files
+never move and nothing is duplicated: the board and its notes sit right beside the real project
+files, on the same drive everyone already uses.
+
+**Attach whatever properties matter to each folder.** Every library folder gets its own field
+definitions — text, number, date, select, multi-select, file, checkbox — grouped into sections you
+can drag to reorder. Export a schema as JSON and reuse it on the next drive.
 
 ![The schema editor with a Flood Zone dropdown, its allowed options, a highlight rule, and a live preview](docs/images/schema-editor.png)
 
@@ -59,9 +64,16 @@ doesn't quietly grow forever.
 ![The Attachments section on a project board, listing files with their sizes and which notes link to them](docs/images/attachments.png)
 -->
 
-**Extend it without forking it.** Plugins are a folder with a manifest and one JavaScript file.
-They run in an isolated sandbox with no network and no filesystem access, and can only touch
-project fields you've granted them. A broken plugin can't take the app down.
+**Track your CPD without a spreadsheet.** A built-in **CPD Tracker** logs Continuing Professional
+Development against an annual hours target, with a place to attach evidence (certificates,
+attendance records) against each entry, and a one-click summary you can copy out for an annual
+return.
+
+**Add more tools whenever you need them.** Plugins are how the app grows — a fee estimator, a
+runoff calculator, a CPD log, whatever your team needs next. Drop a plugin's folder in and it shows
+up in the app. Each one runs in an isolated sandbox with no network and no filesystem access, and
+can only touch the project fields you've granted it, so a broken or untrusted plugin can't take the
+app down or reach your files.
 
 ![The plugins page listing two sandboxed plugins with permission badges](docs/images/plugins.png)
 
@@ -91,37 +103,7 @@ Installers are **not code-signed**, so Windows SmartScreen and macOS Gatekeeper 
 run. On Windows choose *More info → Run anyway*; on macOS right-click the app and choose *Open*.
 See [SECURITY.md](SECURITY.md).
 
-Prefer to build it yourself? See below.
-
-## Build from source
-
-Requires Node.js 20+.
-
-```bash
-npm install
-```
-
-```bash
-npm start
-```
-
-Run the tests:
-
-```bash
-npm test
-```
-
-Build installers for the current platform (output in `dist/`, which is not tracked in git —
-binaries are published through Releases instead). The tests run first, so a failing build is never
-packaged:
-
-```bash
-npm run build
-```
-
-There are `build:win`, `build:mac` and `build:linux` for a specific platform, and `build:dir` for
-an unpacked folder you can run without installing — useful when you only want to check something
-loads.
+Prefer to build it yourself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Getting started
 
@@ -173,8 +155,8 @@ with a `manifest.json` and a single JavaScript file. No build step.
 A plugin either adds a **section to every project board** and writes results straight back into
 project fields, or takes its **own ribbon button and page** for a tool that owns its own data.
 Two are bundled: **Storm Runoff Calculator** (board section) and **CPD Tracker** (activity page —
-logs Continuing Professional Development against an annual target, with evidence files and an
-annual-return export).
+logs Continuing Professional Development against an annual target, with evidence files attached to
+each entry and a summary you can copy out for an annual return).
 
 **To install one:** open the **Plugins** page in the left ribbon, click **Plugins folder**, drop the
 plugin's folder in, and click **Refresh**. That button opens the right directory for your install
@@ -197,43 +179,11 @@ plugins you trust.
 plugin, the manifest format, the `PluginAPI` reference, styling, sandbox limits, and
 troubleshooting. `plugins/storm-runoff/` is a complete worked example.
 
-## Architecture
-
-```
-src/main/       Electron main process — everything that touches the filesystem
-  main.js         app lifecycle, window, navigation guards, pnplugin:// scheme
-  menu.js         the native application menu
-  pathGuard.js    the allowlist every project-scoped IPC call is checked against
-  writeTracker.js holds app quit open until pending writes land
-  windowState.js  remembers window bounds, and refuses to restore off-screen ones
-  preload.js      the entire renderer-facing API surface
-  ipc/            one module per area (notes, project, config, search, plugins, …)
-  services/       storage, scanner, search, searchIndex, watcher, history,
-                  templates, userStyles, plugins, pluginHost
-src/shared/     Pure logic usable from either process — validation, theme tokens,
-                diff, retention policy, template substitution
-renderer/       UI — no Node access; everything goes through window.api
-  styles/         design tokens + per-area stylesheets
-  core/           store, toast, modal, popover, undo, fsWatch, icons, events
-  workspace/      tab groups, splitting, the right sidebar
-  editor/         note editor, markdown rendering, attachments
-    cm/             CodeMirror wiring
-    markdown/       callouts, embeds, footnotes, maths, diagrams, highlighting
-  views/          project board, schema editor, table, storage, settings,
-                  quick switcher, version history
-  panels/         sidebar panes: backlinks, outline, outgoing links, tags, reference
-  plugins/        host side of the sandboxed plugin bridge
-plugins/        Bundled sample plugins
-test/           node:test unit tests — no framework
-```
-
-Security posture: `contextIsolation` on, `nodeIntegration` off, a channel-allowlisted preload, a
-strict CSP on the app document, external links forced out to the system browser, and plugins
-isolated behind a separate protocol scheme with their own CSP.
-
 ## Contributing
 
-Issues and pull requests are welcome. Please run `npm test` before opening a PR.
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how the code is
+organised and how to get set up. Security details and the app's threat model live in
+[SECURITY.md](SECURITY.md).
 
 ## License
 

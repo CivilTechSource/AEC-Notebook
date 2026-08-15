@@ -20,6 +20,19 @@ npm test
 Tests are plain `node:test` — no test framework to learn. Anything pure (validation, markdown
 preprocessing, path handling, search) should have a test; UI wiring generally doesn't.
 
+## Building installers
+
+```bash
+npm run build
+```
+
+Output goes to `dist/` (not tracked in git — binaries are published through GitHub Releases
+instead). `npm test` runs first, so a failing build is never packaged.
+
+`build:win`, `build:mac` and `build:linux` build for one specific platform. `build:dir` produces an
+unpacked folder you can run without installing — useful when you only want to check something
+loads.
+
 ## How the code is organised
 
 - `src/main/` — the Electron main process. Everything that touches the filesystem lives here.
