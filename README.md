@@ -68,7 +68,7 @@ doesn't quietly grow forever.
 Development against an annual hours target, with a place to attach evidence (certificates,
 attendance records) against each entry, and a one-click summary you can copy out for an annual
 return.
-
+![The CPD page](docs/images/CPD.png)
 **Add more tools whenever you need them.** Plugins are how the app grows — a fee estimator, a
 runoff calculator, a CPD log, whatever your team needs next. Drop a plugin's folder in and it shows
 up in the app. Each one runs in an isolated sandbox with no network and no filesystem access, and
